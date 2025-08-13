@@ -1,0 +1,2476 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MultiSensor Pro — Detección y Monitoreo</title>
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; connect-src 'self' https: wss: stun: turn: data: blob:; media-src 'self' blob: data: https:; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' https: data:;">
+
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p41B+tP0hH0X8W0f2wB7N9J+0A2BfD2/xYv9hP5X75M=" crossorigin=""/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        /* CSS mejorado */
+        :root {
+            --bg-color: #071023;
+            --panel-bg: rgba(255, 255, 255, 0.02);
+            --accent-color: #06b6d4;
+            --muted-color: #9fb0c1;
+            --text-color: #e6f6fb;
+            --border-color: rgba(255, 255, 255, 0.06);
+            --radius: 10px;
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: var(--muted-color);
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(180deg, #021027, #041022);
+            color: var(--muted-color);
+        }
+        .app-container {
+            display: grid;
+            grid-template-columns: 300px 1fr 360px;
+            gap: 1rem;
+            padding: 1rem;
+            height: 100vh;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border-radius: var(--radius);
+            padding: 1rem;
+            overflow: hidden; /* Prevent overflow issues */
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        .panel-title {
+            font-weight: 700;
+            color: var(--text-color);
+            font-size: 1.25rem;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .btn {
+            border: none;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-primary {
+            background: var(--accent-color);
+            color: var(--bg-color);
+        }
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--muted-color);
+        }
+        .btn-ghost:hover {
+            border-color: var(--accent-color);
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .input-group label {
+            white-space: nowrap;
+        }
+        input[type="text"], input[type="number"], textarea, select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 0.875rem;
+            flex-grow: 1;
+        }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border-color);
+            margin: 1rem 0;
+        }
+        .video-stream {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .overlay-canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+        .zone-label {
+            position: absolute;
+            background: rgba(6,182,212,0.8);
+            color: #001018;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-size: 12px;
+            transform: translate(-50%, -140%);
+            pointer-events: none;
+        }
+        /* Leyenda y badges de detecciones */
+        .legend {
+            position: absolute;
+            left: 8px;
+            bottom: 8px;
+            background: rgba(0,0,0,0.45);
+            padding: 6px 8px;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            color: #e6f6fb;
+            font-size: 12px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot.person { background: #34d399; }
+        .dot.object { background: #ff5555; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-weight: 600;
+        }
+        .badge-person { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.35); }
+        .badge-object { background: rgba(255,85,85,0.15); color: #ff8b8b; border: 1px solid rgba(255,85,85,0.35); }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            flex-shrink: 0; /* Prevents gallery from growing */
+        }
+        .thumb {
+            position: relative;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        .thumb img, .thumb video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            aspect-ratio: 16/9;
+        }
+        .small-text { font-size: 0.875rem; color: var(--muted-color); }
+        .map-container {
+            height: 40vh;
+            border-radius: var(--radius);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .side-toggle {
+            position: fixed;
+            left: 1rem;
+            top: 1rem;
+            background: rgba(0, 0, 0, 0.45);
+            padding: 0.5rem;
+            border-radius: 8px;
+            color: #fff;
+            z-index: 1000;
+            display: none; /* Hide on larger screens */
+        }
+        .config-box {
+            background: rgba(255, 255, 255, 0.01);
+            padding: 0.75rem;
+            border-radius: 8px;
+        }
+    /* Zonas viewer (panel derecho) */
+    .zones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .zone-card { background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; }
+    .zone-card canvas { width: 100%; height: auto; display: block; aspect-ratio: 16/9; background:#000; border-radius: 6px; }
+    .zone-card .meta { display:flex; justify-content: space-between; align-items:center; margin-top:4px; font-size: 12px; }
+    /* Centrado para Herramientas del Principal */
+    #principal-tools h2, #principal-tools p { text-align: center; }
+    #principal-tools .qr-container { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    #principal-tools .qr-container canvas { display: block; margin: 0 auto; }
+    #principal-tools .qr-container input[type="text"] { display: block; margin: 0.25rem auto 0; text-align: center; max-width: 360px; width: 100%; }
+    /* Centrado para Descarga por QR */
+    #download-tools h2, #download-tools p { text-align: center; }
+    #download-tools .input-group { justify-content: center; }
+    #download-tools input[type="text"] { max-width: 460px; width: 100%; }
+    #download-tools #qr-download { display: block; margin: 8px auto 0; }
+    #download-tools .qr-actions { display: flex; justify-content: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    #download-tools .center-actions { display: flex; justify-content: center; margin-top: 8px; }
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            align-items: start;
+        }
+        .mini-charts {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+        .mini-chart {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.5rem;
+            min-height: 120px;
+            height: 160px;
+            resize: vertical;
+            overflow: auto;
+        }
+        .mini-chart canvas { width: 100%; height: 100%; }
+        .footer {
+            font-size: 0.75rem;
+            color: var(--muted-color);
+            margin-top: auto; /* Push to bottom */
+        }
+    .share-box { margin-top: 6px; }
+    .share-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; align-items: center; }
+    .share-grid .btn { padding: 0.6rem; }
+    .share-grid i { font-size: 1.1rem; }
+        /* Estilo para las pestañas */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+        .tab {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            background: var(--panel-bg);
+            color: var(--muted-color);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: var(--radius) var(--radius) 0 0;
+            margin-right: 0.5rem;
+            transition: background 0.2s ease;
+        }
+        .tab.active {
+            background: var(--accent-color);
+            color: var(--bg-color);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* Responsive design */
+        @media (max-width: 1100px) {
+            .app-container {
+                grid-template-columns: 1fr;
+                grid-auto-rows: auto;
+                height: auto;
+                padding: 0.5rem;
+            }
+            .panel:last-child { margin-top: 1rem; }
+            .video-stream { height: 60vh; }
+            .map-container { height: 30vh; }
+            .side-toggle { display: block; }
+            .panel#left {
+                display: none; /* Hide by default on mobile */
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 90%;
+                max-height: 100vh;
+                z-index: 999;
+            }
+            .two-col { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="panel" id="left">
+            <div class="panel-header">
+                <div class="panel-title">MultiSensor Pro</div>
+                <button class="btn btn-ghost" id="role-toggle">
+                    <i class="fas fa-exchange-alt"></i>
+                </button>
+            </div>
+            <div class="mini-charts">
+                <div class="mini-chart"><div class="small-text">Detecciones</div><canvas id="mini-det"></canvas></div>
+                <div class="mini-chart"><div class="small-text">Personas</div><canvas id="mini-pers"></canvas></div>
+                <div class="mini-chart"><div class="small-text">Movimiento</div><canvas id="mini-mov"></canvas></div>
+                <div class="mini-chart"><div class="small-text">En zonas</div><canvas id="mini-zon"></canvas></div>
+            </div>
+            <div class="config-box" style="margin-top:8px;">
+                <div class="small-text" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>Cámaras conectadas</span>
+                    <button class="btn btn-ghost" id="toggle-cams">Mostrar/Ocultar</button>
+                </div>
+                <div id="cams-mini" style="display:none; margin-top:6px;">
+                    <!-- Aquí se listarán mini-gráficos por cámara y sus zonas -->
+                </div>
+            </div>
+            <div class="map-container" id="map"></div>
+            <!-- Conexiones movidas a la pestaña "Conexiones" -->
+        </div>
+        <div class="panel" id="main">
+            <div class="tabs">
+                <div class="tab active" data-tab="tab1">Cámara</div>
+                <div class="tab" data-tab="tab2">Zonas</div>
+                <div class="tab" data-tab="tab3">Mapa</div>
+                <div class="tab" data-tab="tab4">Monitoreo</div>
+                <div class="tab" data-tab="tab5">Conexiones</div>
+            </div>
+            <div id="tab1" class="tab-content active">
+                <div class="video-stream" id="video-stream-container">
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+                    <div style="position:absolute;right:8px;top:8px;display:flex;gap:6px;z-index:3;">
+                        <button id="snap-btn" class="btn btn-ghost"><i class="fas fa-camera"></i> Foto</button>
+                        <button id="rec-btn" class="btn btn-ghost"><i class="fas fa-video"></i> Grabar</button>
+                        <button id="palette-btn" class="btn btn-ghost"><i class="fas fa-palette"></i> Colores</button>
+                        <button id="cam-start" class="btn btn-primary"><i class="fas fa-play"></i> Iniciar</button>
+                        <button id="cam-stop" class="btn btn-ghost" disabled><i class="fas fa-stop"></i> Detener</button>
+                    </div>
+                    <div id="legend" class="legend" style="z-index:3;"></div>
+                    <div id="status-pill" class="legend" style="left:auto; right:8px; bottom:8px; gap:8px;">
+                        <span id="status-model">Modelo: —</span>
+                        <span id="status-camera">Cámara: —</span>
+                    </div>
+                </div>
+                <div class="config-box" style="margin-top:8px;">
+                    <div class="small-text" style="margin-bottom:6px; font-weight:600;">Controles de detección y captura</div>
+                    <div class="input-group">
+                        <label for="det-threshold">Umbral detección (%)</label>
+                        <input type="range" id="det-threshold" min="10" max="90" value="50" style="flex:1;">
+                        <span id="det-threshold-val">50%</span>
+                    </div>
+                    <div class="input-group">
+                        <label for="include-objects">Incluir objetos</label>
+                        <input type="checkbox" id="include-objects" checked>
+                        <label for="proc-speed">Velocidad</label>
+                        <select id="proc-speed">
+                            <option value="very-slow">Muy lento</option>
+                            <option value="slow">Lento</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="fast">Rápido</option>
+                        </select>
+                        <label for="cam-res">Resolución</label>
+                        <select id="cam-res">
+                            <option value="640x480">640x480</option>
+                            <option value="1280x720" selected>1280x720</option>
+                            <option value="1920x1080">1920x1080</option>
+                        </select>
+                        <label for="cam-facing">Cámara</label>
+                        <select id="cam-facing">
+                            <option value="auto" selected>Automática</option>
+                            <option value="front">Frontal</option>
+                            <option value="back">Posterior</option>
+                        </select>
+                        <button id="cam-flip" class="btn btn-ghost" title="Cambiar entre frontal/posterior"><i class="fas fa-sync-alt"></i> Cambiar</button>
+                        <label for="video-source">Fuente</label>
+                        <select id="video-source">
+                            <option value="local" selected>Cámara local</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <button id="cam-pause" class="btn btn-ghost"><i class="fas fa-pause"></i> Pausar</button>
+                        <button id="detect-toggle" class="btn btn-ghost"><i class="fas fa-bullseye"></i> Detección: ON</button>
+                    </div>
+                    <div class="small-text">Nota: la velocidad de un stream de cámara en vivo no puede acelerarse/ralentizarse; la opción de Velocidad ajusta la frecuencia de procesamiento.</div>
+                </div>
+                <div class="config-box" style="margin-top:8px;">
+                    <div class="small-text">Galería</div>
+                    <div class="gallery" id="gallery"></div>
+                </div>
+            </div>
+            <div id="tab2" class="tab-content">
+                <div class="controls config-box">
+                    <div class="input-group">
+                        <button id="zones-btn" class="btn btn-ghost">Definir Zonas (máx. 4)</button>
+                        <button id="clear-zones-btn" class="btn btn-ghost">Borrar Zonas</button>
+                        <button id="edit-zones-btn" class="btn btn-ghost">Editar Zonas</button>
+                        <button id="delete-zone-btn" class="btn btn-ghost">Eliminar Zona seleccionada</button>
+                        <button id="rename-zone-btn" class="btn btn-ghost"><i class="fas fa-i-cursor"></i> Renombrar Zona</button>
+                    </div>
+                    <div class="input-group">
+                        <label for="zones-only">Solo detecciones dentro de zonas</label>
+                        <input type="checkbox" id="zones-only" />
+                    </div>
+                    <div class="small-text">Zonas definidas: <span id="zones-count">0</span></div>
+                </div>
+            </div>
+            <div id="tab3" class="tab-content">
+                <div class="controls config-box">
+                    <div class="input-group">
+                        <button id="map-follow-btn" class="btn btn-ghost"><i class="fas fa-location-arrow"></i> Seguir mi ubicación</button>
+                        <button id="map-center-btn" class="btn btn-ghost"><i class="fas fa-crosshairs"></i> Centrar en Principal</button>
+                        <button id="map-add-node-btn" class="btn btn-ghost"><i class="fas fa-plus"></i> Agregar Nodo</button>
+                    </div>
+                    <div class="small-text">Principal: <span id="principal-pos">—</span> | Nodos: <span id="nodes-count">0</span></div>
+                </div>
+                <div id="map-container" class="map-container"></div>
+                <div class="config-box small-text" id="nodes-list" style="margin-top:8px; max-height:180px; overflow:auto;"></div>
+            </div>
+            <div id="tab4" class="tab-content">
+                <div class="controls config-box">
+                    <div class="input-group">
+                        <button id="export-json-btn" class="btn btn-ghost"><i class="fas fa-file-export"></i> Exportar JSON</button>
+                        <button id="export-csv-btn" class="btn btn-ghost"><i class="fas fa-file-csv"></i> Exportar CSV</button>
+                        <button id="clear-report-btn" class="btn btn-ghost"><i class="fas fa-trash"></i> Limpiar Reporte</button>
+                        <button id="toggle-zone-mov" class="btn btn-ghost"><i class="fas fa-wave-square"></i> Movimiento por zona</button>
+                        <label for="event-max">Máx. eventos</label>
+                        <input type="number" id="event-max" min="20" max="1000" step="10" value="200" style="max-width:100px;">
+                    </div>
+                </div>
+                <canvas id="chart-canvas" style="margin-top:8px;width:100%;height:220px;"></canvas>
+                <div id="zone-motion-wrapper" class="config-box" style="margin-top:8px; display:none;">
+                    <div class="small-text">Movimiento por zona (0-100)</div>
+                    <div id="zone-motion-charts" class="mini-charts">
+                        <div class="mini-chart"><div class="small-text">Zona 1</div><canvas id="zone-mov-1"></canvas></div>
+                        <div class="mini-chart"><div class="small-text">Zona 2</div><canvas id="zone-mov-2"></canvas></div>
+                        <div class="mini-chart"><div class="small-text">Zona 3</div><canvas id="zone-mov-3"></canvas></div>
+                        <div class="mini-chart"><div class="small-text">Zona 4</div><canvas id="zone-mov-4"></canvas></div>
+                    </div>
+                </div>
+                <div class="config-box" style="margin-top:8px;">
+                    <div class="small-text">Objetos en pantalla: <span id="current-detections-count">0</span></div>
+                    <div id="current-detections" class="small-text" style="max-height:180px;overflow-y:auto;display:grid;gap:4px;margin-top:6px;"></div>
+                </div>
+                <div id="event-log" class="small-text config-box" style="max-height:160px;overflow-y:auto;flex-grow:1;"></div>
+            </div>
+            <div id="tab5" class="tab-content">
+                <div class="controls config-box">
+                    <label for="role-select">Selecciona tu rol:</label>
+                    <select id="role-select">
+                        <option value="primary">Principal</option>
+                        <option value="node">Nodo</option>
+                    </select>
+                </div>
+
+                <div class="two-col">
+                  <div id="principal-tools" class="config-box">
+                      <h2>Herramientas del Principal</h2>
+                                            <div class="config-box">
+                                                <div class="small-text" style="text-align:center; font-weight:600;">Código de emparejamiento (manual)</div>
+                                                <div class="input-group">
+                                                    <label for="pairing-code">Código</label>
+                                                    <input type="text" id="pairing-code" readonly placeholder="A123B">
+                                                    <button class="btn btn-ghost" id="pairing-generate"><i class="fas fa-magic"></i> Generar</button>
+                                                    <button class="btn btn-ghost" id="pairing-copy"><i class="fas fa-copy"></i> Copiar</button>
+                                                </div>
+                                                <div class="small-text">Formato: letra + 3 números + letra (ej: A123B). Compártelo con el Nodo.</div>
+                                            </div>
+                                                                    <div class="config-box" style="margin-top:6px;">
+                                                                        <div class="small-text" style="text-align:center; font-weight:600;">Código de proyecto</div>
+                                                                        <div class="input-group">
+                                                                            <label for="project-code">Proyecto</label>
+                                                                            <input type="text" id="project-code" placeholder="A123B">
+                                                                            <button class="btn btn-ghost" id="project-generate"><i class="fas fa-magic"></i> Generar</button>
+                                                                            <button class="btn btn-ghost" id="project-copy"><i class="fas fa-copy"></i> Copiar</button>
+                                                                        </div>
+                                                                        <div class="small-text">Todos los nodos del proyecto deben usar el mismo código.</div>
+                                                                    </div>
+                      <div class="qr-container">
+                          <p>Escanea este código QR para conectar un Nodo:</p>
+                          <canvas id="qr-code"></canvas>
+                          <p>O comparte este código:</p>
+                          <input type="text" id="connection-code" readonly>
+                      </div>
+                      <hr>
+                      <div class="config-box">
+                        <div class="small-text" style="text-align:center;">Conexión P2P (sin servidor)</div>
+                        <div class="input-group">
+                          <button class="btn btn-primary" id="p2p-create-offer"><i class="fas fa-link"></i> Crear oferta</button>
+                          <button class="btn btn-ghost" id="p2p-apply-answer"><i class="fas fa-check"></i> Aplicar respuesta</button>
+                        </div>
+                        <div class="small-text">Oferta (compártela con el Nodo)</div>
+                        <textarea id="p2p-offer-out" rows="4" readonly></textarea>
+                        <div class="small-text" style="margin-top:6px;">Respuesta del Nodo (pégala aquí y pulsa Aplicar)</div>
+                        <textarea id="p2p-answer-in" rows="4" placeholder="Pega la respuesta del Nodo aquí"></textarea>
+                      </div>
+                  </div>
+                  <div id="download-tools" class="config-box">
+                      <h2>Descarga por QR</h2>
+                      <p class="small-text">Comparte este QR para que cualquiera descargue el archivo y lo use en su equipo.</p>
+                      <div class="input-group" style="justify-content:center;">
+                          <label for="download-url">URL de descarga</label>
+                          <input type="text" id="download-url" placeholder="https://...">
+                      </div>
+                      <div class="qr-actions">
+                          <button class="btn btn-ghost" id="update-download-qr">Actualizar QR</button>
+                          <button class="btn btn-ghost" id="copy-download-url">Copiar enlace</button>
+                      </div>
+                      <canvas id="qr-download" style="margin-top:6px;"></canvas>
+                      <div class="small-text" id="download-url-hint" style="margin-top:6px;"></div>
+                  </div>
+                </div>
+
+                <div id="node-tools" class="config-box" style="margin-top:8px;">
+                    <h2>Herramientas del Nodo</h2>
+                    <div class="controls">
+                        <label for="connection-input">Introduce el código del Principal (A123B):</label>
+                        <input type="text" id="connection-input">
+                        <button class="btn btn-primary" id="connect-btn">Guardar código</button>
+                    </div>
+                    <div class="controls" style="margin-top:6px;">
+                        <label for="project-input">Código de proyecto (A123B):</label>
+                        <input type="text" id="project-input">
+                    </div>
+                    <hr>
+                    <div class="config-box">
+                      <div class="small-text" style="text-align:center;">Conexión P2P (Nodo)</div>
+                      <div class="small-text">Pega la oferta del Principal:</div>
+                      <textarea id="p2p-offer-in" rows="4" placeholder='Pega aquí la oferta JSON del Principal'></textarea>
+                      <div class="input-group">
+                        <button class="btn btn-primary" id="p2p-create-answer"><i class="fas fa-reply"></i> Generar respuesta</button>
+                        <button class="btn btn-ghost" id="p2p-copy-answer"><i class="fas fa-copy"></i> Copiar respuesta</button>
+                      </div>
+                      <div class="small-text">Respuesta para enviar al Principal:</div>
+                      <textarea id="p2p-answer-out" rows="4" readonly></textarea>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <p class="small-text">MultiSensor Pro - Todos los derechos reservados.</p>
+                </div>
+            </div>
+        </div>
+        <div class="panel" id="right">
+            <div class="panel-header">
+                <div class="panel-title">Panel derecho</div>
+            </div>
+            <div class="controls">
+                <div class="input-group">
+                    <button class="btn btn-ghost" id="right-tab-zones"><i class="fas fa-border-all"></i> Zonas</button>
+                    <button class="btn btn-ghost" id="right-tab-conns"><i class="fas fa-plug"></i> Conexiones</button>
+                </div>
+            </div>
+            <div id="zones-viewer" class="config-box">
+                <div class="small-text" style="margin-bottom:6px;">Vista de zonas</div>
+                <div id="zones-grid" class="zones-grid"></div>
+                <div class="small-text" id="zones-viewer-hint" style="margin-top:6px; display:none;">Define zonas y/o inicia la cámara para ver vistas previas.</div>
+            </div>
+            <div id="connections-panel" style="display:none;">
+                <div class="controls">
+                    <button class="btn btn-ghost" id="refresh-btn"><i class="fas fa-sync-alt"></i> Actualizar</button>
+                </div>
+                <div id="connections-list" class="config-box">
+                    <!-- Lista de conexiones activas -->
+                </div>
+                <div id="connections-debug" class="config-box" style="margin-top:8px;">
+                    <h2>Diagnóstico</h2>
+                    <div class="small-text">Estados de los pares (signaling/ICE/candidates):</div>
+                    <div id="peer-states" class="small-text" style="margin-top:6px; display:grid; gap:4px;"></div>
+                </div>
+                <div id="ice-tools" class="config-box" style="margin-top:8px;">
+                    <h2>Red (ICE)</h2>
+                    <div class="small-text">Usa STUN/TURN para conectar por internet (afecta nuevas conexiones).</div>
+                    <div class="input-group">
+                        <label for="ice-stun">STUN</label>
+                        <input type="text" id="ice-stun" placeholder="stun:stun.l.google.com:19302, stun:global.stun.twilio.com:3478">
+                    </div>
+                    <div class="input-group">
+                        <label for="ice-turn-url">TURN URL</label>
+                        <input type="text" id="ice-turn-url" placeholder="turn:tu-servidor:3478?transport=udp">
+                    </div>
+                    <div class="input-group">
+                        <label for="ice-turn-user">Usuario</label>
+                        <input type="text" id="ice-turn-user" placeholder="usuario">
+                        <label for="ice-turn-pass">Clave</label>
+                        <input type="password" id="ice-turn-pass" placeholder="clave">
+                    </div>
+                    <div class="input-group">
+                        <button class="btn btn-ghost" id="ice-apply">Aplicar</button>
+                    </div>
+                    <div class="small-text">Sugerencia: instala un TURN (coturn) propio para máxima compatibilidad.</div>
+                </div>
+                <div id="media-tools" class="config-box" style="margin-top:8px;">
+                    <h2>Medios P2P</h2>
+                    <div class="input-group">
+                        <label for="share-av">Compartir cámara/mic</label>
+                        <input type="checkbox" id="share-av">
+                        <label for="share-geo">Compartir ubicación</label>
+                        <input type="checkbox" id="share-geo">
+                        <label for="share-camera">Cámara</label>
+                        <select id="share-camera">
+                            <option value="auto" selected>Automática</option>
+                            <option value="front">Frontal</option>
+                            <option value="back">Posterior</option>
+                        </select>
+                        <button class="btn btn-ghost" id="flip-camera" title="Cambiar entre frontal/posterior"><i class="fas fa-sync-alt"></i> Cambiar</button>
+                    </div>
+                    <div class="small-text">Activa antes de "Crear oferta"/"Generar respuesta" para incluir medios en la conexión.</div>
+                    <div class="small-text">Nota: los videos remotos se reproducen en silencio por defecto; puedes activar audio desde los controles.</div>
+                    <div id="remote-videos" style="display:grid; gap:8px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); margin-top:8px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <button class="btn btn-primary side-toggle" id="toggle-sidenav">
+        <i class="fas fa-bars"></i>
+    </button>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script>
+        // JavaScript mejorado para funcionalidad completa
+        const video = document.getElementById('local-video');
+        const overlayCanvas = document.getElementById('overlay-canvas');
+    const ctx = overlayCanvas.getContext('2d');
+    const remoteStreams = new Map(); // peerId -> MediaStream
+    // Botones principales ahora solo en la pestaña Cámara (cam-start / cam-stop)
+
+    let localStream = null;
+    let detectorModel = null;
+    let running = false;
+    // Nuevos estados de control
+    let paused = false; // pausa de video/procesamiento
+    let detectionEnabled = true; // ON/OFF detección
+    let detThreshold = 0.5; // 0..1 (50%)
+    let includeObjects = true; // si false, solo personas
+    let processDelayMs = 80; // frecuencia de procesamiento detección
+    let motionIntervalMs = 300; // frecuencia de cálculo de movimiento
+    let desiredResolution = { width: 1280, height: 720 };
+    let desiredFacing = 'auto'; // 'auto'|'front'|'back'
+    let lastIdentLabel = '';
+    // Auto-activación UI por sesión de cámara
+    let autoShownZoneMotionThisRun = false;
+    let autoSwitchedRightThisRun = false;
+    let autoSwitchedMapThisRun = false;
+
+        // Mini-charts state
+        let miniCharts = null;
+        const miniData = {
+            det: [],
+            pers: [],
+            mov: [],
+            zon: []
+        };
+        const miniLabels = [];
+        function ensureMiniCharts() {
+            if (miniCharts) return miniCharts;
+            const mk = (el, color) => new Chart(el.getContext('2d'), {
+                type: 'line', data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace('1)', '0.15)'), fill: true, tension: 0.25 }] },
+                options: { animation: false, responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+            });
+            miniCharts = {
+                det: mk(document.getElementById('mini-det'), 'rgba(6,182,212,1)'),
+                pers: mk(document.getElementById('mini-pers'), 'rgba(52,211,153,1)'),
+                mov: mk(document.getElementById('mini-mov'), 'rgba(234,179,8,1)'),
+                zon: mk(document.getElementById('mini-zon'), 'rgba(244,63,94,1)')
+            };
+            return miniCharts;
+        }
+        function pushMiniPoint(det, pers, mov, zon) {
+            const labsMax = 60;
+            const t = new Date().toLocaleTimeString();
+            miniLabels.push(t);
+            miniData.det.push(det); miniData.pers.push(pers); miniData.mov.push(mov); miniData.zon.push(zon);
+            if (miniLabels.length > labsMax) {
+                miniLabels.shift();
+                Object.keys(miniData).forEach(k => miniData[k].shift());
+            }
+            const charts = ensureMiniCharts();
+            charts.det.data.labels = [...miniLabels]; charts.det.data.datasets[0].data = [...miniData.det]; charts.det.update('none');
+            charts.pers.data.labels = [...miniLabels]; charts.pers.data.datasets[0].data = [...miniData.pers]; charts.pers.update('none');
+            charts.mov.data.labels = [...miniLabels]; charts.mov.data.datasets[0].data = [...miniData.mov]; charts.mov.update('none');
+            charts.zon.data.labels = [...miniLabels]; charts.zon.data.datasets[0].data = [...miniData.zon]; charts.zon.update('none');
+        }
+
+        // Mini-charts por cámara/nodo
+        const camsCharts = new Map(); // camId -> {wrap, charts, labels, data}
+        function ensureCamSection() {
+            const btn = document.getElementById('toggle-cams');
+            const cont = document.getElementById('cams-mini');
+            btn?.addEventListener('click', () => {
+                if (!cont) return;
+                cont.style.display = (cont.style.display === 'none' || cont.style.display === '') ? 'block' : 'none';
+            });
+        }
+        function ensureCamCharts(camId, camName) {
+            ensureCamSection();
+            if (camsCharts.has(camId)) return camsCharts.get(camId);
+            const cont = document.getElementById('cams-mini');
+            if (!cont) return null;
+            const wrap = document.createElement('div');
+            wrap.className = 'config-box';
+            wrap.style.marginTop = '6px';
+            wrap.innerHTML = `<div class="small-text" style="font-weight:600;">${camName || camId}</div>
+                <div class="mini-charts">
+                  <div class="mini-chart"><div class="small-text">Detecciones</div><canvas class="m-det"></canvas></div>
+                  <div class="mini-chart"><div class="small-text">Personas</div><canvas class="m-pers"></canvas></div>
+                  <div class="mini-chart"><div class="small-text">Movimiento</div><canvas class="m-mov"></canvas></div>
+                  <div class="mini-chart"><div class="small-text">En zonas</div><canvas class="m-zon"></canvas></div>
+                </div>
+                <div class="config-box" style="margin-top:6px;">
+                  <div class="small-text">Mov. por zona</div>
+                  <div class="mini-charts">
+                    <div class="mini-chart"><div class="small-text">Z1</div><canvas class="z1"></canvas></div>
+                    <div class="mini-chart"><div class="small-text">Z2</div><canvas class="z2"></canvas></div>
+                    <div class="mini-chart"><div class="small-text">Z3</div><canvas class="z3"></canvas></div>
+                    <div class="mini-chart"><div class="small-text">Z4</div><canvas class="z4"></canvas></div>
+                  </div>
+                </div>`;
+            cont.appendChild(wrap);
+            // Mostrar automáticamente la sección de cámaras cuando está activa
+            cont.style.display = 'block';
+            const mk = (cv, color) => new Chart(cv.getContext('2d'), {
+                type: 'line', data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace('1)', '0.15)'), fill: true, tension: 0.25 }] },
+                options: { animation: false, responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
+            });
+            const charts = {
+                det: mk(wrap.querySelector('canvas.m-det'), 'rgba(6,182,212,1)'),
+                pers: mk(wrap.querySelector('canvas.m-pers'), 'rgba(52,211,153,1)'),
+                mov: mk(wrap.querySelector('canvas.m-mov'), 'rgba(234,179,8,1)'),
+                zon: mk(wrap.querySelector('canvas.m-zon'), 'rgba(244,63,94,1)')
+            };
+            // Zona charts (0..100)
+            const mkZ = (cv, color) => new Chart(cv.getContext('2d'), {
+                type: 'line', data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace('1)', '0.15)'), fill: true, tension: 0.25 }] },
+                options: { animation: false, responsive: true, scales: { y: { min: 0, max: 100 } }, plugins: { legend: { display: false } } }
+            });
+            const zoneCharts = [
+                mkZ(wrap.querySelector('canvas.z1'), 'rgba(6,182,212,1)'),
+                mkZ(wrap.querySelector('canvas.z2'), 'rgba(52,211,153,1)'),
+                mkZ(wrap.querySelector('canvas.z3'), 'rgba(234,179,8,1)'),
+                mkZ(wrap.querySelector('canvas.z4'), 'rgba(244,63,94,1)')
+            ];
+            const labels = [];
+            const data = { det: [], pers: [], mov: [], zon: [] };
+            const zoneData = [[], [], [], []];
+            const entry = { wrap, charts, labels, data, zoneCharts, zoneData };
+            camsCharts.set(camId, entry);
+            return entry;
+        }
+        function refreshCamZoneBlock(e) {
+            if (!e || !e.wrap) return;
+            const zs = zonesByRole[currentRole] || [];
+            const names = zs.map((z, i) => (z && z.name ? String(z.name) : `Zona ${i+1}`));
+            const cards = e.wrap.querySelectorAll('.config-box .mini-charts .mini-chart');
+            cards.forEach((card, idx) => {
+                const title = card.querySelector('.small-text');
+                if (title && names[idx]) title.textContent = names[idx];
+                card.style.display = idx < zs.length ? 'block' : 'none';
+            });
+        }
+        function refreshAllCamZoneBlocks() {
+            for (const e of camsCharts.values()) refreshCamZoneBlock(e);
+        }
+        function pushCamPoint(camId, camName, det, pers, mov, zon) {
+            const e = ensureCamCharts(camId, camName);
+            if (!e) return;
+            const labsMax = 60;
+            const t = new Date().toLocaleTimeString();
+            e.labels.push(t);
+            if (e.labels.length > labsMax) e.labels.shift();
+            e.data.det.push(det); if (e.data.det.length > labsMax) e.data.det.shift();
+            e.data.pers.push(pers); if (e.data.pers.length > labsMax) e.data.pers.shift();
+            e.data.mov.push(mov); if (e.data.mov.length > labsMax) e.data.mov.shift();
+            e.data.zon.push(zon); if (e.data.zon.length > labsMax) e.data.zon.shift();
+            e.charts.det.data.labels = [...e.labels]; e.charts.det.data.datasets[0].data = [...e.data.det]; e.charts.det.update('none');
+            e.charts.pers.data.labels = [...e.labels]; e.charts.pers.data.datasets[0].data = [...e.data.pers]; e.charts.pers.update('none');
+            e.charts.mov.data.labels = [...e.labels]; e.charts.mov.data.datasets[0].data = [...e.data.mov]; e.charts.mov.update('none');
+            e.charts.zon.data.labels = [...e.labels]; e.charts.zon.data.datasets[0].data = [...e.data.zon]; e.charts.zon.update('none');
+        }
+        // Movimiento por zona por cámara
+        function pushCamZoneMotion(camId, camName, zoneVals) {
+            const e = ensureCamCharts(camId, camName);
+            if (!e) return;
+            const labsMax = 60;
+            const t = new Date().toLocaleTimeString();
+            if (e.labels.length === 0 || e.labels[e.labels.length - 1] !== t) {
+                e.labels.push(t);
+                if (e.labels.length > labsMax) e.labels.shift();
+            }
+            for (let i = 0; i < 4; i++) {
+                const v = Number.isFinite(zoneVals[i]) ? zoneVals[i] : 0;
+                if (!e.zoneData[i]) e.zoneData[i] = [];
+                e.zoneData[i].push(v);
+                if (e.zoneData[i].length > labsMax) e.zoneData[i].shift();
+                e.zoneCharts[i].data.labels = [...e.labels];
+                e.zoneCharts[i].data.datasets[0].data = [...e.zoneData[i]];
+                e.zoneCharts[i].update('none');
+            }
+        }
+
+        // Colores por clase y leyenda dinámica
+        const basePalette = ['#34d399','#f59e0b','#a78bfa','#60a5fa','#f97316','#ef4444','#f472b6','#22d3ee','#84cc16','#10b981','#eab308','#fb7185','#f43f5e','#06b6d4','#8b5cf6','#22c55e'];
+        // Traducción de clases de coco-ssd a español
+        const CLASS_ES = {
+            person: 'persona',
+            bicycle: 'bicicleta', car: 'auto', motorcycle: 'motocicleta', airplane: 'avión', bus: 'bus', train: 'tren', truck: 'camión', boat: 'barco',
+            traffic_light: 'semáforo', fire_hydrant: 'hidrante', stop_sign: 'señal stop', parking_meter: 'parquímetro', bench: 'banco',
+            bird: 'pájaro', cat: 'gato', dog: 'perro', horse: 'caballo', sheep: 'oveja', cow: 'vaca', elephant: 'elefante', bear: 'oso', zebra: 'cebra', giraffe: 'jirafa',
+            backpack: 'mochila', umbrella: 'paraguas', handbag: 'bolso', tie: 'corbata', suitcase: 'valija',
+            frisbee: 'frisbee', skis: 'esquís', snowboard: 'tabla de nieve', sports_ball: 'pelota', kite: 'cometa', baseball_bat: 'bate', baseball_glove: 'guante', skateboard: 'skate', surfboard: 'tabla de surf', tennis_racket: 'raqueta',
+            bottle: 'botella', wine_glass: 'copa', cup: 'taza', fork: 'tenedor', knife: 'cuchillo', spoon: 'cuchara', bowl: 'bol',
+            banana: 'banana', apple: 'manzana', sandwich: 'sándwich', orange: 'naranja', broccoli: 'brócoli', carrot: 'zanahoria', hot_dog: 'pancho', pizza: 'pizza', donut: 'donut', cake: 'torta',
+            chair: 'silla', couch: 'sofá', potted_plant: 'planta en maceta', bed: 'cama', dining_table: 'mesa', toilet: 'inodoro', tv: 'televisor', laptop: 'laptop', mouse: 'mouse', remote: 'control', keyboard: 'teclado', cell_phone: 'celular',
+            microwave: 'microondas', oven: 'horno', toaster: 'tostadora', sink: 'lavabo', refrigerator: 'heladera',
+            book: 'libro', clock: 'reloj', vase: 'florero', scissors: 'tijeras', teddy_bear: 'oso de peluche', hair_drier: 'secador', toothbrush: 'cepillo de dientes'
+        };
+        const toES = (cls) => CLASS_ES[cls] || cls;
+        const classColors = new Map(Object.entries({ person: '#34d399' }));
+        let paletteIndex = 0;
+        function nextPaletteColor() {
+            const col = basePalette[paletteIndex % basePalette.length];
+            paletteIndex++;
+            return col;
+        }
+        function colorForClass(cls) {
+            if (!classColors.has(cls)) {
+                if (cls === 'person') {
+                    classColors.set(cls, '#34d399');
+                } else {
+                    classColors.set(cls, nextPaletteColor());
+                }
+            }
+            return classColors.get(cls);
+        }
+        function badgeStyleForColor(col) {
+            return `background: color-mix(in srgb, ${col} 20%, transparent); color: ${col}; border: 1px solid color-mix(in srgb, ${col} 40%, transparent);`;
+        }
+    function renderLegend(classes) {
+            const legend = document.getElementById('legend');
+            if (!legend) return;
+            legend.innerHTML = '';
+            const unique = Array.from(new Set(classes));
+            unique.slice(0, 14).forEach(cls => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                const dot = document.createElement('span');
+                dot.className = 'dot';
+                dot.style.background = colorForClass(cls);
+                const label = document.createElement('span');
+        label.textContent = toES(cls);
+                item.appendChild(dot);
+                item.appendChild(label);
+                legend.appendChild(item);
+            });
+        }
+
+        // Zonas de monitoreo (hasta 4) por rol
+        const zonesByRole = {
+            principal: [],
+            node: []
+        };
+        const ZONES_STORAGE_KEY = 'multisensor.zones.v1';
+        function loadZonesFromStorage() {
+            try {
+                const raw = localStorage.getItem(ZONES_STORAGE_KEY);
+                if (!raw) return;
+                const obj = JSON.parse(raw);
+                if (obj && typeof obj === 'object') {
+                    zonesByRole.principal = Array.isArray(obj.principal) ? obj.principal : [];
+                    zonesByRole.node = Array.isArray(obj.node) ? obj.node : [];
+                }
+            } catch (e) { console.warn('No se pudieron cargar zonas:', e); }
+        }
+        function saveZonesToStorage() {
+            try {
+                const data = JSON.stringify(zonesByRole);
+                localStorage.setItem(ZONES_STORAGE_KEY, data);
+            } catch (e) { console.warn('No se pudieron guardar zonas:', e); }
+        }
+        let currentRole = 'principal';
+        let drawZonesMode = false;
+    let editZonesMode = false;
+        const zonesBtn = document.getElementById('zones-btn');
+        const clearZonesBtn = document.getElementById('clear-zones-btn');
+    const editZonesBtn = document.getElementById('edit-zones-btn');
+    const deleteZoneBtn = document.getElementById('delete-zone-btn');
+        const zonesCountEl = document.getElementById('zones-count');
+        const zonesOnlyEl = document.getElementById('zones-only');
+        let dragStart = null;
+        let tempRect = null;
+    let selectedZoneIndex = -1;
+    let resizeHandle = null; // 'nw','ne','sw','se','move'
+
+    // Reporte y tracking
+    const report = [];
+    let nextPersonId = 1;
+    let nextObjectId = 1;
+    const tracks = new Map(); // key -> {id, cls, bbox, lastSeen}
+
+    let videoResizeObserver = null;
+
+    async function startCamera() {
+            try {
+                const baseVideo = { width: { ideal: desiredResolution.width }, height: { ideal: desiredResolution.height } };
+                if (desiredFacing === 'front') baseVideo.facingMode = { ideal: 'user' };
+                else if (desiredFacing === 'back') baseVideo.facingMode = { ideal: 'environment' };
+                const constraints = { video: baseVideo };
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (e) {
+                    // Fallback: elegir deviceId por enumeración si facingMode falla
+                    const devId = await pickDeviceIdForFacing(desiredFacing);
+                    if (devId) {
+                        localStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: devId }, width: baseVideo.width, height: baseVideo.height } });
+                    } else {
+                        throw e;
+                    }
+                }
+                video.srcObject = localStream;
+                await new Promise(r => video.onloadedmetadata = r);
+                function syncCanvasSize(){
+                    // Alinear canvas al tamaño visible del video en pantalla
+                    overlayCanvas.width = video.clientWidth || video.videoWidth || overlayCanvas.width;
+                    overlayCanvas.height = video.clientHeight || video.videoHeight || overlayCanvas.height;
+                }
+                syncCanvasSize();
+                window.addEventListener('resize', syncCanvasSize);
+                // Observar cambios de tamaño del elemento de video
+                try {
+                    if (videoResizeObserver) videoResizeObserver.disconnect();
+                    videoResizeObserver = new ResizeObserver(() => syncCanvasSize());
+                    videoResizeObserver.observe(video);
+                } catch {}
+                const camStart = document.getElementById('cam-start');
+                const camStop = document.getElementById('cam-stop');
+                if (camStart && camStop) { camStart.disabled = true; camStop.disabled = false; }
+                const stCam = document.getElementById('status-camera');
+                if (stCam) stCam.textContent = 'Cámara: Activa';
+                ensureMotionChart();
+                startMotionLoop();
+                startZonePreviewLoop();
+                // Al iniciar cámara, si hay zonas activas, mostrar secciones relacionadas
+                updateZoneMotionVisibility();
+                ensureZoneMotionCharts();
+                updateZoneMotionCharts();
+                autoActivateZoneViews('cam-start');
+            } catch (err) {
+                console.error('Error al iniciar la cámara:', err);
+            }
+        }
+
+        function adjustOverlayToVideo() {
+            try {
+                overlayCanvas.width = video.clientWidth || video.videoWidth || overlayCanvas.width;
+                overlayCanvas.height = video.clientHeight || video.videoHeight || overlayCanvas.height;
+            } catch {}
+        }
+
+        async function pickDeviceIdForFacing(facing) {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videos = devices.filter(d => d.kind === 'videoinput');
+                if (!videos.length) return null;
+                if (facing === 'front') {
+                    return (videos.find(d => /front|user/i.test(d.label)) || videos[0])?.deviceId || null;
+                }
+                if (facing === 'back') {
+                    return (videos.find(d => /back|rear|environment/i.test(d.label)) || videos[videos.length-1])?.deviceId || null;
+                }
+                return videos[0].deviceId;
+            } catch { return null; }
+        }
+
+        function stopCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            try { videoResizeObserver?.disconnect(); } catch {}
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            const camStart = document.getElementById('cam-start');
+            const camStop = document.getElementById('cam-stop');
+            if (camStart && camStop) { camStart.disabled = false; camStop.disabled = true; }
+            const stCam = document.getElementById('status-camera');
+            if (stCam) stCam.textContent = 'Cámara: Detenida';
+            stopMotionLoop();
+            stopZonePreviewLoop();
+            // Ocultar bloque de movimiento por zona cuando la cámara no está vigente
+            const zmw = document.getElementById('zone-motion-wrapper');
+            if (zmw) zmw.style.display = 'none';
+            autoShownZoneMotionThisRun = false;
+            autoSwitchedRightThisRun = false;
+            autoSwitchedMapThisRun = false;
+            try { ensureZonePreviewCanvases(); } catch {}
+        }
+
+        function setModelStatus(text) {
+            const stModel = document.getElementById('status-model');
+            if (stModel) stModel.textContent = text;
+        }
+
+        async function ensureDetector() {
+            if (detectorModel) return detectorModel;
+            // Asegurar backend listo y seleccionar el mejor disponible
+            try {
+                await tf.ready();
+                try { await tf.setBackend('webgl'); await tf.ready(); }
+                catch { try { await tf.setBackend('wasm'); await tf.ready(); } catch { await tf.setBackend('cpu'); await tf.ready(); } }
+            } catch (e) { console.warn('No se pudo configurar backend TFJS:', e); }
+            setModelStatus('Modelo: Cargando...');
+            // Helper timeout
+            const withTimeout = (p, ms) => Promise.race([
+                p,
+                new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))
+            ]);
+            try {
+                detectorModel = await withTimeout(cocoSsd.load(), 20000);
+            } catch (e) {
+                console.error('Fallo al cargar el modelo:', e);
+                setModelStatus(e && e.message === 'timeout' ? 'Modelo: Lento/timeout' : 'Modelo: Error');
+                return null;
+            }
+            setModelStatus('Modelo: Listo');
+            return detectorModel;
+        }
+
+        function rectIntersectsZones(rect, zones) {
+            if (!zones || zones.length === 0) return true; // si no hay zonas, no filtrar
+            const [x, y, w, h] = rect;
+            const r = {left: x, top: y, right: x + w, bottom: y + h};
+            return zones.some(z => {
+                const zR = {left: z.x, top: z.y, right: z.x + z.w, bottom: z.y + z.h};
+                return !(r.right < zR.left || r.left > zR.right || r.bottom < zR.top || r.top > zR.bottom);
+            });
+        }
+
+        function zonesIndicesForRect(rect, zones) {
+            if (!zones || zones.length === 0) return [];
+            const [x, y, w, h] = rect;
+            const r = {left: x, top: y, right: x + w, bottom: y + h};
+            const hits = [];
+            zones.forEach((z, i) => {
+                const zR = {left: z.x, top: z.y, right: z.x + z.w, bottom: z.y + z.h};
+                const ok = !(r.right < zR.left || r.left > zR.right || r.bottom < zR.top || r.top > zR.bottom);
+                if (ok) hits.push(i);
+            });
+            return hits;
+        }
+
+    function drawZones(zones) {
+            zones.forEach((z, idx) => {
+                ctx.strokeStyle = 'rgba(6,182,212,0.9)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.strokeRect(z.x, z.y, z.w, z.h);
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(6,182,212,0.15)';
+                ctx.fillRect(z.x, z.y, z.w, z.h);
+                ctx.fillStyle = '#9ff0ff';
+                ctx.font = '12px Inter, sans-serif';
+                const zName = z.name && String(z.name).trim() ? String(z.name).trim() : `Zona ${idx+1}`;
+                ctx.fillText(zName, z.x+4, z.y+14);
+        // handles
+        ctx.fillStyle = idx === selectedZoneIndex ? '#ffd166' : '#06b6d4';
+        const hs = 6;
+        ctx.fillRect(z.x-hs, z.y-hs, hs*2, hs*2); // nw
+        ctx.fillRect(z.x+z.w-hs, z.y-hs, hs*2, hs*2); // ne
+        ctx.fillRect(z.x-hs, z.y+z.h-hs, hs*2, hs*2); // sw
+        ctx.fillRect(z.x+z.w-hs, z.y+z.h-hs, hs*2, hs*2); // se
+            });
+            if (tempRect) {
+                const {x,y,w,h} = tempRect;
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.setLineDash([2,2]);
+                ctx.strokeRect(x,y,w,h);
+                ctx.setLineDash([]);
+            }
+        }
+
+    const eventLog = document.getElementById('event-log');
+        const curDetList = document.getElementById('current-detections');
+        const curDetCount = document.getElementById('current-detections-count');
+        // Movimiento (dif. de frames) + gráfico en tiempo real
+        let motionInterval = null;
+        let latestMotion = 0; // 0..100
+        const off = document.createElement('canvas');
+        const offCtx = off.getContext('2d');
+        let prevFrame = null;
+        let motionChart = null;
+    // Movimiento por zona (series por cada zona activa)
+    const zoneMotion = { labels: [], series: [[],[],[],[]] }; // hasta 4 zonas
+    let zoneMotionCharts = null;
+    function getZoneNames() {
+        const zs = zonesByRole[currentRole] || [];
+        const names = [];
+        for (let i = 0; i < 4; i++) {
+            const z = zs[i];
+            names.push(z && z.name ? String(z.name) : `Zona ${i+1}`);
+        }
+        return names;
+    }
+        function ensureMotionChart() {
+            const canvas = document.getElementById('chart-canvas');
+            if (!canvas || motionChart) return;
+            const c2 = canvas.getContext('2d');
+            motionChart = new Chart(c2, {
+                type: 'line',
+                data: { labels: [], datasets: [{ label: 'Movimiento', borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.18)', data: [], tension: 0.25, fill: true }] },
+                options: { responsive: true, animation: false, scales: { y: { min: 0, max: 100 } }, plugins: { legend: { display: true } } }
+            });
+        }
+        function updateMotionChart(val) {
+            if (!motionChart) return;
+            const data = motionChart.data;
+            const t = new Date().toLocaleTimeString();
+            data.labels.push(t);
+            data.datasets[0].data.push(val);
+            if (data.labels.length > 60) { data.labels.shift(); data.datasets[0].data.shift(); }
+            motionChart.update('none');
+        }
+        function startMotionLoop() {
+            const vw = video.videoWidth || video.clientWidth || 320;
+            const vh = video.videoHeight || video.clientHeight || 240;
+            off.width = 160;
+            off.height = Math.max(90, Math.round(160 * (vh / Math.max(1, vw))));
+            if (motionInterval) return;
+            motionInterval = setInterval(() => {
+                if (!localStream) return;
+                if (paused) return;
+                try {
+                    offCtx.drawImage(video, 0, 0, off.width, off.height);
+                    const frame = offCtx.getImageData(0, 0, off.width, off.height);
+                    const pix = frame.data;
+                    let diff = 0;
+                    // preparar zonas escaladas al offscreen
+                    const activeZones = zonesByRole[currentRole] || [];
+                    const scaleX = off.width / Math.max(1, (video.videoWidth || video.clientWidth || off.width));
+                    const scaleY = off.height / Math.max(1, (video.videoHeight || video.clientHeight || off.height));
+                    const zRects = activeZones.slice(0,4).map(z => ({
+                        x: Math.max(0, Math.floor(z.x * scaleX)),
+                        y: Math.max(0, Math.floor(z.y * scaleY)),
+                        w: Math.max(1, Math.floor(z.w * scaleX)),
+                        h: Math.max(1, Math.floor(z.h * scaleY))
+                    }));
+                    const zDiff = new Array(4).fill(0);
+                    const zArea = zRects.map(r => r.w * r.h);
+                    if (prevFrame && prevFrame.length === pix.length) {
+                        for (let y = 0; y < off.height; y++) {
+                            for (let x = 0; x < off.width; x++) {
+                                const idx = (y * off.width + x) * 4;
+                                const d = Math.abs(pix[idx] - prevFrame[idx]) + Math.abs(pix[idx+1] - prevFrame[idx+1]) + Math.abs(pix[idx+2] - prevFrame[idx+2]);
+                                if (d > 30) {
+                                    diff++;
+                                    // acumular por zona cuando cae dentro
+                                    zRects.forEach((r, zi) => {
+                                        if (zi < activeZones.length && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) {
+                                            zDiff[zi]++;
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                        latestMotion = Math.min(100, Math.round((diff / (off.width * off.height)) * 3000));
+                        updateMotionChart(latestMotion);
+                        // Normalizar movimiento por zona como 0..100
+                        const t = new Date().toLocaleTimeString();
+                        if (zoneMotion.labels.push(t) > 60) zoneMotion.labels.shift();
+                        const zoneVals = [0,0,0,0];
+                        for (let i = 0; i < 4; i++) {
+                            const val = zArea[i] > 0 ? Math.min(100, Math.round((zDiff[i] / zArea[i]) * 3000)) : 0;
+                            zoneVals[i] = val;
+                            if (!zoneMotion.series[i]) zoneMotion.series[i] = [];
+                            zoneMotion.series[i].push(val);
+                            if (zoneMotion.series[i].length > 60) zoneMotion.series[i].shift();
+                        }
+                        updateZoneMotionCharts();
+                        // alimentar gráficos por zona por cámara local
+                        pushCamZoneMotion('local', 'Cámara local', zoneVals);
+                    }
+                    prevFrame = new Uint8ClampedArray(pix);
+                } catch {}
+            }, motionIntervalMs);
+        }
+        function stopMotionLoop() {
+            if (motionInterval) { clearInterval(motionInterval); motionInterval = null; }
+            prevFrame = null; latestMotion = 0;
+        }
+        function ensureZoneMotionCharts() {
+            if (zoneMotionCharts) return zoneMotionCharts;
+            const cont = document.getElementById('zone-motion-charts');
+            if (!cont) return null;
+            const mk = (id, color) => new Chart(document.getElementById(id).getContext('2d'), {
+                type: 'line', data: { labels: [], datasets: [{ data: [], borderColor: color, backgroundColor: color.replace('1)', '0.15)'), fill: true, tension: 0.25 }] },
+                options: { animation: false, responsive: true, scales: { y: { min: 0, max: 100 } }, plugins: { legend: { display: false } } }
+            });
+            zoneMotionCharts = [
+                mk('zone-mov-1', 'rgba(6,182,212,1)'),
+                mk('zone-mov-2', 'rgba(52,211,153,1)'),
+                mk('zone-mov-3', 'rgba(234,179,8,1)'),
+                mk('zone-mov-4', 'rgba(244,63,94,1)')
+            ];
+            return zoneMotionCharts;
+        }
+        function refreshZoneMotionTitlesAndVisibility() {
+            const wrap = document.getElementById('zone-motion-wrapper');
+            const grid = document.getElementById('zone-motion-charts');
+            if (!wrap || !grid) return;
+            const active = zonesByRole[currentRole] || [];
+            const names = getZoneNames();
+            const cards = grid.querySelectorAll('.mini-chart');
+            cards.forEach((card, idx) => {
+                const title = card.querySelector('.small-text');
+                if (title) title.textContent = names[idx] || `Zona ${idx+1}`;
+                card.style.display = idx < active.length ? 'block' : 'none';
+            });
+        }
+        function updateZoneMotionCharts() {
+            const charts = ensureZoneMotionCharts();
+            if (!charts) return;
+            refreshZoneMotionTitlesAndVisibility();
+            for (let i = 0; i < charts.length; i++) {
+                charts[i].data.labels = [...zoneMotion.labels];
+                charts[i].data.datasets[0].data = [...(zoneMotion.series[i] || [])];
+                charts[i].update('none');
+            }
+        }
+        function logEvent(msg) {
+            if (!eventLog) return;
+            const time = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.textContent = `[${time}] ${msg}`;
+            eventLog.prepend(line);
+            // Limit log length
+            while (eventLog.childNodes.length > 200) eventLog.removeChild(eventLog.lastChild);
+        }
+
+        function iou(a, b) {
+            const ax2 = a[0] + a[2], ay2 = a[1] + a[3];
+            const bx2 = b[0] + b[2], by2 = b[1] + b[3];
+            const x1 = Math.max(a[0], b[0]);
+            const y1 = Math.max(a[1], b[1]);
+            const x2 = Math.min(ax2, bx2);
+            const y2 = Math.min(ay2, by2);
+            const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+            const ua = a[2] * a[3] + b[2] * b[3] - inter;
+            return ua > 0 ? inter / ua : 0;
+        }
+
+        function assignTrackId(cls, bbox) {
+            // simple nearest IoU tracking per class bucket
+            let bestKey = null, bestIoU = 0;
+            for (const [key, t] of tracks) {
+                if (t.cls !== cls) continue;
+                const i = iou(t.bbox, bbox);
+                if (i > bestIoU) { bestIoU = i; bestKey = key; }
+            }
+            if (bestIoU > 0.3 && bestKey) {
+                const t = tracks.get(bestKey);
+                t.bbox = bbox; t.lastSeen = Date.now();
+                return t.id;
+            }
+            const id = cls === 'person' ? nextPersonId++ : nextObjectId++;
+            const key = `${cls}-${id}`;
+            tracks.set(key, { id, cls, bbox: [...bbox], lastSeen: Date.now() });
+            return id;
+        }
+
+    const lastZoneSnapshot = new Map(); // key: role:cls#id:z<idx> -> ts
+
+    async function detectionLoop() {
+            let model;
+            try {
+                model = await ensureDetector();
+            } catch (e) {
+                console.error('Error asegurando modelo:', e);
+                setModelStatus('Modelo: Error');
+                return;
+            }
+            if (!model) return;
+            if (!localStream) return;
+            running = true;
+            while (running) {
+                if (paused || !detectionEnabled) { await new Promise(r => setTimeout(r, processDelayMs)); continue; }
+                const predictions = await model.detect(video);
+                ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                // Releer zonas y modo filtro cada iteración
+                const activeZones = zonesByRole[currentRole];
+                const filterByZones = !!(zonesOnlyEl && zonesOnlyEl.checked);
+                // Dibuja zonas primero
+                drawZones(activeZones);
+                // Calcular escala de video -> overlay
+                const vw = video.videoWidth || video.clientWidth || overlayCanvas.width;
+                const vh = video.videoHeight || video.clientHeight || overlayCanvas.height;
+                const sx = overlayCanvas.width / Math.max(1, vw);
+                const sy = overlayCanvas.height / Math.max(1, vh);
+                const items = [];
+                const seenClasses = new Set();
+                predictions.forEach(prediction => {
+                    if (prediction.score < detThreshold) return;
+                    const srcRect = prediction.bbox;
+                    const rect = [
+                        srcRect[0] * sx,
+                        srcRect[1] * sy,
+                        srcRect[2] * sx,
+                        srcRect[3] * sy
+                    ];
+                    const inside = rectIntersectsZones(rect, activeZones);
+                    const zHits = zonesIndicesForRect(rect, activeZones);
+                    if (filterByZones && !inside) return;
+                    const [x, y, width, height] = rect;
+                    const cls = prediction.class;
+                    if (!includeObjects && cls !== 'person') return;
+                    const id = assignTrackId(cls === 'person' ? 'person' : cls, rect);
+                    const col = colorForClass(cls);
+                    seenClasses.add(cls);
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x, y, width, height);
+                    ctx.fillStyle = col;
+                    ctx.font = '12px Inter, sans-serif';
+                    ctx.fillText(`${toES(cls)} #${id} ${(prediction.score*100).toFixed(1)}%`, x, y > 12 ? y - 4 : 12);
+                    items.push({ id, cls, score: prediction.score, inside, zones: zHits });
+                    if (inside && activeZones.length > 0) {
+                        const zonesTxt = zHits.map(i => i+1).join(',');
+                        logEvent(`Detección en zona(s) ${zonesTxt}: ${toES(cls)} #${id}`);
+                        report.push({
+                            ts: Date.now(),
+                            role: currentRole,
+                            class: toES(cls),
+                            id,
+                            score: prediction.score,
+                            bbox: rect,
+                            zones: zHits
+                        });
+                    }
+                });
+                // Actualizar etiqueta rápida para snapshot manual
+                if (items.length) {
+                    const firstFew = items.slice(0, 3).map(it => `${toES(it.cls)} #${it.id}`).join(', ');
+                    lastIdentLabel = `Identificado: ${firstFew}${items.length > 3 ? '…' : ''}`;
+                } else {
+                    lastIdentLabel = '';
+                }
+                renderLegend(Array.from(seenClasses));
+                // barra de movimiento
+                const barH = Math.max(6, Math.round((latestMotion/100) * overlayCanvas.height));
+                ctx.fillStyle = 'rgba(6,182,212,0.12)';
+                ctx.fillRect(0, overlayCanvas.height - barH, overlayCanvas.width, barH);
+                ctx.fillStyle = 'rgba(230,246,251,0.9)';
+                ctx.font = '12px Inter, sans-serif';
+                ctx.fillText(`Movimiento: ${latestMotion}%`, 8, Math.max(14, overlayCanvas.height - barH - 6));
+                if (curDetList && curDetCount) {
+                    curDetList.innerHTML = '';
+            items.forEach(it => {
+                        const row = document.createElement('div');
+            const col = colorForClass(it.cls);
+            row.className = 'badge';
+            row.setAttribute('style', badgeStyleForColor(col));
+            const zLabel = it.zones && it.zones.length ? ` [zona ${it.zones.map(i=>i+1).join(',')}]` : '';
+        row.textContent = `${toES(it.cls)} #${it.id} ${(it.score*100).toFixed(1)}%${zLabel}`;
+                        curDetList.appendChild(row);
+                    });
+                    curDetCount.textContent = items.length.toString();
+                }
+                // snapshots automáticos por zonas (antirrebote por id/zona)
+                const now = Date.now();
+                items.filter(i => i.zones && i.zones.length).forEach(i => {
+                    i.zones.forEach(zIdx => {
+                        const key = `${currentRole}:${i.cls}#${i.id}:z${zIdx}`;
+                        const last = lastZoneSnapshot.get(key) || 0;
+                        if (now - last > 5000) { // 5s cooldown
+                            const label = `Zona ${zIdx+1} • ${i.cls} #${i.id} • ${new Date().toLocaleTimeString()}`;
+                            takeSnapshot(label);
+                            lastZoneSnapshot.set(key, now);
+                        }
+                    });
+                });
+                // actualizar mini charts
+                const totalDet = items.length;
+                const totalPers = items.filter(i => i.cls === 'person').length;
+                const totalZon = items.filter(i => i.zones && i.zones.length).length;
+                pushMiniPoint(totalDet, totalPers, latestMotion, totalZon);
+                // alimentar gráficos por cámara para la cámara local (id fijo 'local')
+                pushCamPoint('local', 'Cámara local', totalDet, totalPers, latestMotion, totalZon);
+                // Broadcast compacto a pares (cada ~1s)
+                try {
+                    window.__lastDetBroadcast ||= 0;
+                    const nowB = Date.now();
+                    if (nowB - window.__lastDetBroadcast > 1000) {
+                        p2p.broadcast({ type: 'detections', data: { total: totalDet, persons: totalPers, inZones: totalZon, motion: latestMotion } });
+                        window.__lastDetBroadcast = nowB;
+                    }
+                } catch {}
+                await new Promise(resolve => setTimeout(resolve, processDelayMs));
+            }
+        }
+
+    // Botones antiguos de iniciar/detener fueron retirados para evitar duplicados
+
+        // Botones en la pestaña Cámara
+        document.getElementById('cam-start')?.addEventListener('click', async () => {
+            try {
+                await startCamera();
+                if (!detectorModel) {
+                    setModelStatus('Modelo: Cargando...');
+                    await ensureDetector();
+                }
+                setModelStatus('Modelo: Listo');
+                detectionLoop();
+            } catch (e) {
+                console.error('Error iniciando detección:', e);
+                setModelStatus('Modelo: Error (ver consola)');
+            }
+        });
+        document.getElementById('cam-stop')?.addEventListener('click', () => {
+            running = false;
+            stopCamera();
+        });
+
+        // Facing selection for local camera
+        document.getElementById('cam-facing')?.addEventListener('change', async (e) => {
+            desiredFacing = e.target.value || 'auto';
+            if (localStream) {
+                // Restart camera with new facing
+                const wasRunning = running;
+                running = false;
+                stopCamera();
+                await startCamera();
+                if (wasRunning) detectionLoop();
+            }
+        });
+        document.getElementById('cam-flip')?.addEventListener('click', async () => {
+            const sel = document.getElementById('cam-facing');
+            if (!sel) return;
+            const next = sel.value === 'front' ? 'back' : 'front';
+            sel.value = next;
+            const evt = new Event('change'); sel.dispatchEvent(evt);
+        });
+
+    // Capturar imagen a la galería (con etiqueta opcional)
+    function takeSnapshot(labelText) {
+            try {
+                const g = document.getElementById('gallery');
+                if (!g) return;
+                const c = document.createElement('canvas');
+                const w = 320, h = Math.round((video.videoHeight || 240) * (320 / Math.max(1, (video.videoWidth || 320))));
+                c.width = w; c.height = h;
+                const cctx = c.getContext('2d');
+                cctx.drawImage(video, 0, 0, w, h);
+        const overlayText = labelText || lastIdentLabel;
+        if (overlayText) {
+            cctx.fillStyle = 'rgba(0,0,0,0.55)';
+            const pad = 6;
+            cctx.font = '12px Inter, sans-serif';
+            const tw = cctx.measureText(overlayText).width;
+            const th = 16;
+            cctx.fillRect(0, h - th - pad*2, Math.min(w, tw + pad*2), th + pad*2);
+            cctx.fillStyle = '#e6f6fb';
+            cctx.fillText(overlayText, pad, h - pad - 2);
+        }
+                const img = new Image(); img.src = c.toDataURL('image/jpeg', 0.8);
+                const wrap = document.createElement('div'); wrap.className = 'thumb';
+                img.onload = () => { wrap.appendChild(img); };
+                g.prepend(wrap);
+                while (g.childNodes.length > 20) {
+                    g.removeChild(g.lastChild);
+                }
+            } catch (e) { console.warn('No se pudo capturar imagen:', e); }
+        }
+    document.getElementById('snap-btn')?.addEventListener('click', () => takeSnapshot());
+
+        // Cambiar fuente de video (local o nodo)
+        document.getElementById('video-source')?.addEventListener('change', async (e) => {
+            await attachMainVideoBySource(e.target.value);
+        });
+
+        // JavaScript para manejar las pestañas
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Desactivar todas las pestañas y contenidos
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(tc => tc.classList.remove('active'));
+
+                // Activar la pestaña y contenido seleccionados
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab).classList.add('active');
+            });
+        });
+
+        function updateRoleChartsVisibility() {
+            const role = currentRole;
+            // Mini-charts: ocultar todo menos Movimiento cuando es Nodo
+            const detWrap = document.getElementById('mini-det')?.closest('.mini-chart');
+            const persWrap = document.getElementById('mini-pers')?.closest('.mini-chart');
+            const zonWrap = document.getElementById('mini-zon')?.closest('.mini-chart');
+            const movWrap = document.getElementById('mini-mov')?.closest('.mini-chart');
+            if (role === 'node') {
+                if (detWrap) detWrap.style.display = 'none';
+                if (persWrap) persWrap.style.display = 'none';
+                if (zonWrap) zonWrap.style.display = 'none';
+                if (movWrap) movWrap.style.display = '';
+                // Ocultar lista de objetos en pantalla en Monitoreo
+                const curList = document.getElementById('current-detections');
+                if (curList) { const box = curList.closest('.config-box'); if (box) box.style.display = 'none'; }
+            } else {
+                if (detWrap) detWrap.style.display = '';
+                if (persWrap) persWrap.style.display = '';
+                if (zonWrap) zonWrap.style.display = '';
+                if (movWrap) movWrap.style.display = '';
+                const curList = document.getElementById('current-detections');
+                if (curList) { const box = curList.closest('.config-box'); if (box) box.style.display = ''; }
+            }
+        }
+
+        // JavaScript para manejar las herramientas de conexión
+    const roleSelect = document.querySelector('#tab5 select#role-select');
+    const qrCodeCanvas = document.querySelector('#tab5 #qr-code');
+    const connectionCodeInput = document.querySelector('#tab5 #connection-code');
+    const connectionInput = document.querySelector('#tab5 #connection-input');
+    const connectBtn = document.querySelector('#tab5 #connect-btn');
+    const principalTools = document.querySelector('#tab5 #principal-tools');
+    const nodeTools = document.querySelector('#tab5 #node-tools');
+
+    let deviceId = `dev_${Math.random().toString(36).substr(2, 8)}`;
+        const PAIR_KEY = 'multisensor.pairing.code.v1';
+    const PROJ_KEY = 'multisensor.project.code.v1';
+        function genPairCode() {
+            const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            const L1 = letters[Math.floor(Math.random()*letters.length)];
+            const N = Math.floor(Math.random()*900)+100; // 100-999
+            const L2 = letters[Math.floor(Math.random()*letters.length)];
+            return `${L1}${N}${L2}`;
+        }
+        function savePairCode(code) { try { localStorage.setItem(PAIR_KEY, code); } catch {} }
+        function loadPairCode() { try { return localStorage.getItem(PAIR_KEY) || ''; } catch { return ''; } }
+    function saveProjectCode(code) { try { localStorage.setItem(PROJ_KEY, code); } catch {} }
+    function loadProjectCode() { try { return localStorage.getItem(PROJ_KEY) || ''; } catch { return ''; } }
+
+    function applyRoleUI() {
+            if (roleSelect?.value === 'primary' || roleSelect?.value === 'principal') {
+                currentRole = 'principal';
+                principalTools.style.display = 'block';
+                nodeTools.style.display = 'none';
+        generateQRCode();
+        const pc = loadPairCode();
+        const pe = document.getElementById('pairing-code'); if (pe) pe.value = pc || genPairCode();
+        if (!pc) savePairCode(pe.value);
+        const proj = loadProjectCode();
+        const ppe = document.getElementById('project-code'); if (ppe) ppe.value = proj || '';
+            } else {
+                currentRole = 'node';
+                principalTools.style.display = 'none';
+                nodeTools.style.display = 'block';
+        // Prefill node input if saved
+        const pc = loadPairCode();
+        const ci = document.getElementById('connection-input'); if (ci && pc) ci.value = pc;
+                const proj = loadProjectCode();
+        const pi = document.getElementById('project-input'); if (pi && proj) pi.value = proj;
+                // En nodo, desactivar detección por defecto (solo movimiento)
+                detectionEnabled = false;
+                const detBtn = document.getElementById('detect-toggle'); if (detBtn) detBtn.textContent = 'Detección: OFF';
+            }
+            zonesCountEl.textContent = zonesByRole[currentRole].length;
+            // Redibujar zonas al cambiar de rol
+            ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                                                                                        
+
+            drawZones(zonesByRole[currentRole]);
+            updateZoneMotionVisibility();
+            ensureZonePreviewCanvases();
+            autoActivateZoneViews('role-change');
+        updateRoleChartsVisibility();
+        }
+
+        roleSelect?.addEventListener('change', applyRoleUI);
+
+        function generateQRCode() {
+            const connectionCode = `${location.origin}?id=${deviceId}`;
+            if (connectionCodeInput) connectionCodeInput.value = connectionCode;
+            if (qrCodeCanvas) {
+                QRCode.toCanvas(qrCodeCanvas, connectionCode, (error) => {
+                    if (error) console.error('Error generating QR code:', error);
+                });
+            }
+        }
+
+        connectBtn?.addEventListener('click', () => {
+            const principalCode = (connectionInput.value || '').trim().toUpperCase();
+            if (!/^[A-Z][0-9]{3}[A-Z]$/.test(principalCode)) { alert('Código inválido. Usa formato A123B.'); return; }
+            savePairCode(principalCode);
+            const projCode = (document.getElementById('project-input')?.value || '').trim().toUpperCase();
+            if (projCode && !/^[A-Z][0-9]{3}[A-Z]$/.test(projCode)) { alert('Código de proyecto inválido (A123B).'); return; }
+            if (projCode) saveProjectCode(projCode);
+            alert('Códigos guardados. Puedes proceder a emparejar con Oferta/Respuesta.');
+        });
+
+        // Emparejamiento manual: generar/copy en Principal
+        document.getElementById('pairing-generate')?.addEventListener('click', () => {
+            const code = genPairCode();
+            const pe = document.getElementById('pairing-code'); if (pe) pe.value = code;
+            savePairCode(code);
+            if (p2p) p2p.expectedPairCode = code;
+        });
+        document.getElementById('pairing-copy')?.addEventListener('click', async () => {
+            try { const pe = document.getElementById('pairing-code'); if (pe?.value) await navigator.clipboard.writeText(pe.value); } catch {}
+        });
+        // Keep connector in sync if code is edited (rare, but allow manual paste)
+        document.getElementById('pairing-code')?.addEventListener('input', (e) => {
+            const v = (e.target.value || '').toUpperCase();
+            e.target.value = v;
+            if (/^[A-Z][0-9]{3}[A-Z]$/.test(v)) { savePairCode(v); if (p2p) p2p.expectedPairCode = v; }
+        });
+        // Project code actions (Principal)
+        document.getElementById('project-generate')?.addEventListener('click', () => {
+            const code = genPairCode();
+            const pe = document.getElementById('project-code'); if (pe) pe.value = code;
+            saveProjectCode(code);
+            if (p2p) p2p.expectedProjectCode = code;
+        });
+        document.getElementById('project-copy')?.addEventListener('click', async () => {
+            try { const pe = document.getElementById('project-code'); if (pe?.value) await navigator.clipboard.writeText(pe.value); } catch {}
+        });
+        document.getElementById('project-code')?.addEventListener('input', (e) => {
+            const v = (e.target.value || '').toUpperCase();
+            e.target.value = v;
+            if (/^[A-Z][0-9]{3}[A-Z]$/.test(v)) { saveProjectCode(v); if (p2p) p2p.expectedProjectCode = v; }
+        });
+
+        // ===== WebRTC P2P (sin servidor) =====
+    class P2PConnector {
+            constructor() {
+                this.peers = new Map(); // remoteId -> { pc, dc }
+                this.onMessage = null;
+                this.onOpen = null;
+                this.iceServers = [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' }
+                ];
+                this.localStream = null;
+                this.onRemoteStream = null;
+                this.candidates = new Map(); // remoteId -> count
+                this.expectedPairCode = loadPairCode() || '';
+                this.expectedProjectCode = loadProjectCode() || '';
+            }
+            async createPeer(remoteId, asInitiator) {
+                const pc = new RTCPeerConnection({ iceServers: this.iceServers });
+                if (this.localStream) {
+                    try { this.localStream.getTracks().forEach(t => pc.addTrack(t, this.localStream)); } catch {}
+                }
+                if (asInitiator) {
+                    const dc = pc.createDataChannel('multisensor');
+                    this._attachDC(remoteId, dc);
+                } else {
+                    pc.ondatachannel = (e) => this._attachDC(remoteId, e.channel);
+                }
+                pc.onconnectionstatechange = () => {
+                    if (pc.connectionState === 'connected') this.onOpen && this.onOpen(remoteId);
+                    try { refreshConnectionsPanel(); } catch {}
+                };
+                pc.oniceconnectionstatechange = () => { try { refreshConnectionsPanel(); } catch {} };
+                pc.onsignalingstatechange = () => { try { refreshConnectionsPanel(); } catch {} };
+                pc.ontrack = (e) => {
+                    const stream = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+                    if (this.onRemoteStream) this.onRemoteStream(remoteId, stream);
+                };
+                pc.onicecandidate = (e) => {
+                    if (e.candidate) {
+                        const prev = this.candidates.get(remoteId) || 0;
+                        this.candidates.set(remoteId, prev + 1);
+                    }
+                };
+                this.peers.set(remoteId, { pc, dc: null });
+                return pc;
+            }
+            _attachDC(remoteId, dc) {
+                dc.onopen = () => { const p = this.peers.get(remoteId); if (p) p.dc = dc; this.onOpen && this.onOpen(remoteId); };
+                dc.onmessage = (e) => { try { const msg = JSON.parse(e.data); this.onMessage && this.onMessage(remoteId, msg); } catch {} };
+            }
+            async startOffer(remoteId = `peer_${Date.now()}`) {
+                const pc = await this.createPeer(remoteId, true);
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                await this._waitIce(pc);
+                return { remoteId, sdp: pc.localDescription, code: this.expectedPairCode, project: this.expectedProjectCode };
+            }
+            async acceptOffer(offerObj) {
+                const { remoteId, sdp } = offerObj;
+                // Validate pairing code if set on this side and present
+                const myCode = this.expectedPairCode;
+                const myProj = this.expectedProjectCode;
+                if (myCode && offerObj && offerObj.code && String(offerObj.code).toUpperCase() !== String(myCode).toUpperCase()) {
+                    throw new Error('Código de emparejamiento no coincide');
+                }
+                if (myProj && offerObj && offerObj.project && String(offerObj.project).toUpperCase() !== String(myProj).toUpperCase()) {
+                    throw new Error('Código de proyecto no coincide');
+                }
+                const pc = await this.createPeer(remoteId, false);
+                await pc.setRemoteDescription(sdp);
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await this._waitIce(pc);
+                return { remoteId, sdp: pc.localDescription, code: myCode, project: myProj };
+            }
+            async applyAnswer(answerObj) {
+                const { remoteId, sdp } = answerObj;
+                // Validate pairing code
+                const myCode = this.expectedPairCode;
+                const myProj = this.expectedProjectCode;
+                if (myCode && answerObj && answerObj.code && String(answerObj.code).toUpperCase() !== String(myCode).toUpperCase()) {
+                    throw new Error('Código de emparejamiento no coincide');
+                }
+                if (myProj && answerObj && answerObj.project && String(answerObj.project).toUpperCase() !== String(myProj).toUpperCase()) {
+                    throw new Error('Código de proyecto no coincide');
+                }
+                const p = this.peers.get(remoteId);
+                if (!p) throw new Error('Peer no encontrado');
+                await p.pc.setRemoteDescription(sdp);
+            }
+            _waitIce(pc) {
+                if (pc.iceGatheringState === 'complete') return Promise.resolve();
+                return new Promise((res) => {
+                    const fn = () => {
+                        if (pc.iceGatheringState === 'complete') { pc.removeEventListener('icegatheringstatechange', fn); res(); }
+                    };
+                    pc.addEventListener('icegatheringstatechange', fn);
+                });
+            }
+            broadcast(msg) {
+                const data = JSON.stringify(msg);
+                for (const { dc } of this.peers.values()) {
+                    if (dc && dc.readyState === 'open') { try { dc.send(data); } catch {} }
+                }
+            }
+            peerCount() {
+                let n = 0; for (const { dc } of this.peers.values()) if (dc && dc.readyState === 'open') n++; return n;
+            }
+            getPeerStates() {
+                const rows = [];
+                for (const [id, { pc }] of this.peers.entries()) {
+                    rows.push({
+                        id,
+                        signalingState: pc.signalingState,
+                        iceConnectionState: pc.iceConnectionState,
+                        connectionState: pc.connectionState,
+                        candidates: this.candidates.get(id) || 0
+                    });
+                }
+                return rows;
+            }
+        }
+
+        const p2p = new P2PConnector();
+        // Aplicar configuración ICE desde UI
+        document.getElementById('ice-apply')?.addEventListener('click', () => {
+            const stunTxt = (document.getElementById('ice-stun')?.value || '').trim();
+            const turnUrl = (document.getElementById('ice-turn-url')?.value || '').trim();
+            const turnUser = (document.getElementById('ice-turn-user')?.value || '').trim();
+            const turnPass = (document.getElementById('ice-turn-pass')?.value || '').trim();
+            const servers = [];
+            if (stunTxt) {
+                stunTxt.split(',').map(s=>s.trim()).filter(Boolean).forEach(u => servers.push({ urls: u }));
+            } else {
+                servers.push({ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' });
+            }
+            if (turnUrl) {
+                const turnCfg = { urls: turnUrl };
+                if (turnUser) turnCfg.username = turnUser;
+                if (turnPass) turnCfg.credential = turnPass;
+                servers.push(turnCfg);
+            }
+            p2p.iceServers = servers;
+            alert('Configuración ICE aplicada. Se usará en nuevas conexiones.');
+        });
+        const remoteSummaries = new Map();
+        p2p.onOpen = () => refreshConnectionsPanel();
+        p2p.onMessage = (fromId, msg) => {
+            switch (msg.type) {
+                case 'zones':
+                    logEvent(`Zonas recibidas de ${fromId}: ${Array.isArray(msg.data) ? msg.data.length : 0}`);
+                    break;
+                case 'detections':
+                    updateRemoteSummary(fromId, msg.data);
+                    break;
+                case 'geo':
+                    try { updateRemoteGeo(fromId, msg.data); } catch {}
+                    break;
+            }
+        };
+
+        // Medios y geolocalización
+        p2p.onRemoteStream = (id, stream) => {
+            remoteStreams.set(id, stream);
+            ensureRemoteVideo(id, stream);
+            updateVideoSourceOptions();
+        };
+        async function applyMediaShareSettings() {
+            const shareAV = document.getElementById('share-av')?.checked;
+            const camPref = (document.getElementById('share-camera')?.value || 'auto');
+            if (shareAV) {
+                try {
+                    // Build constraints honoring facing preference
+                    const videoConstraints = {};
+                    if (camPref === 'front') videoConstraints.facingMode = { ideal: 'user' };
+                    else if (camPref === 'back') videoConstraints.facingMode = { ideal: 'environment' };
+                    else videoConstraints.facingMode = { ideal: 'user' };
+                    const newStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
+                    await replaceLocalStreamTracks(newStream);
+                } catch (e) {
+                    console.warn('No se pudo obtener cámara/mic con preferencia:', e);
+                    if (!p2p.localStream) {
+                        try { p2p.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); } catch (e2) { console.warn('Fallback AV failed:', e2); }
+                    }
+                }
+            }
+            const shareGeo = document.getElementById('share-geo')?.checked;
+            if (shareGeo && navigator.geolocation) {
+                if (!window.__geoWatchId) {
+                    window.__geoWatchId = navigator.geolocation.watchPosition(pos => {
+                        const payload = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, ts: Date.now() };
+                        try { p2p.broadcast({ type: 'geo', data: payload }); } catch {}
+                        try { updateRemoteGeo('self', payload); } catch {}
+                    }, err => console.warn('geo error', err), { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+                }
+            } else if (window.__geoWatchId) {
+                try { navigator.geolocation.clearWatch(window.__geoWatchId); } catch {}
+                window.__geoWatchId = null;
+            }
+        }
+        document.getElementById('share-av')?.addEventListener('change', applyMediaShareSettings);
+        document.getElementById('share-geo')?.addEventListener('change', applyMediaShareSettings);
+        document.getElementById('share-camera')?.addEventListener('change', applyMediaShareSettings);
+        document.getElementById('flip-camera')?.addEventListener('click', async () => {
+            const sel = document.getElementById('share-camera');
+            if (!sel) return;
+            const next = sel.value === 'front' ? 'back' : 'front';
+            sel.value = next;
+            await applyMediaShareSettings();
+        });
+        // Hook: aplicar antes de crear oferta/respuesta
+        const __startOffer = p2p.startOffer.bind(p2p);
+        p2p.startOffer = async (...args) => { await applyMediaShareSettings(); return __startOffer(...args); };
+        const __acceptOffer = p2p.acceptOffer.bind(p2p);
+        p2p.acceptOffer = async (...args) => { await applyMediaShareSettings(); return __acceptOffer(...args); };
+
+        async function replaceLocalStreamTracks(newStream) {
+            // If we already have a stream, replace tracks on all peers; else set and attach
+            const old = p2p.localStream;
+            p2p.localStream = newStream;
+            // Replace tracks in active RTCPeerConnections
+            for (const { pc } of p2p.peers.values()) {
+                try {
+                    const senders = pc.getSenders();
+                    const newVideo = newStream.getVideoTracks()[0];
+                    const newAudio = newStream.getAudioTracks()[0];
+                    if (newVideo) {
+                        const s = senders.find(x => x.track && x.track.kind === 'video');
+                        if (s) await s.replaceTrack(newVideo);
+                        else pc.addTrack(newVideo, newStream);
+                    }
+                    if (newAudio) {
+                        const s = senders.find(x => x.track && x.track.kind === 'audio');
+                        if (s) await s.replaceTrack(newAudio);
+                        else pc.addTrack(newAudio, newStream);
+                    }
+                } catch {}
+            }
+            // Stop old tracks to free camera/mic
+            try { old?.getTracks().forEach(t => t.stop()); } catch {}
+        }
+
+        // UI P2P elements
+        const offerOutEl = document.getElementById('p2p-offer-out');
+        const answerInEl = document.getElementById('p2p-answer-in');
+        const offerInEl = document.getElementById('p2p-offer-in');
+        const answerOutEl = document.getElementById('p2p-answer-out');
+        document.getElementById('p2p-create-offer')?.addEventListener('click', async () => {
+            const offer = await p2p.startOffer();
+            if (offerOutEl) offerOutEl.value = JSON.stringify(offer);
+        });
+        document.getElementById('p2p-apply-answer')?.addEventListener('click', async () => {
+            try {
+                const obj = JSON.parse((answerInEl?.value || '').trim());
+                await p2p.applyAnswer(obj);
+                if (answerInEl) answerInEl.value = '';
+                refreshConnectionsPanel();
+            } catch { alert('Respuesta inválida'); }
+        });
+        document.getElementById('p2p-create-answer')?.addEventListener('click', async () => {
+            try {
+                const obj = JSON.parse((offerInEl?.value || '').trim());
+                const ans = await p2p.acceptOffer(obj);
+                if (answerOutEl) answerOutEl.value = JSON.stringify(ans);
+            } catch { alert('Oferta inválida'); }
+        });
+        document.getElementById('p2p-copy-answer')?.addEventListener('click', async () => {
+            try { if (answerOutEl?.value) await navigator.clipboard.writeText(answerOutEl.value); } catch {}
+        });
+
+        function refreshConnectionsPanel() {
+            const box = document.getElementById('connections-list');
+            if (!box) return;
+            box.innerHTML = '';
+            const hdr = document.createElement('div'); hdr.className = 'small-text'; hdr.textContent = `Pares conectados: ${p2p.peerCount()}`; box.appendChild(hdr);
+            if (remoteSummaries.size) {
+                const list = document.createElement('div'); list.style.marginTop = '6px';
+                for (const [k, v] of remoteSummaries) {
+                    const row = document.createElement('div'); row.className = 'badge'; row.style.border = '1px solid rgba(255,255,255,0.15)';
+                    row.textContent = `#${k} • det:${v.total} • personas:${v.persons} • zonas:${v.inZones} • movimiento:${v.motion}%`;
+                    list.appendChild(row);
+                }
+                box.appendChild(list);
+            }
+            // Debug states
+            const dbgEl = document.getElementById('peer-states');
+            if (dbgEl) {
+                dbgEl.innerHTML = '';
+                const states = p2p.getPeerStates();
+                if (!states.length) {
+                    const empty = document.createElement('div'); empty.textContent = 'Sin pares todavía'; dbgEl.appendChild(empty);
+                } else {
+                    states.forEach(s => {
+                        const div = document.createElement('div');
+                        div.textContent = `#${s.id} • signaling:${s.signalingState} • ice:${s.iceConnectionState} • conn:${s.connectionState} • cand:${s.candidates}`;
+                        dbgEl.appendChild(div);
+                    });
+                }
+            }
+            updateVideoSourceOptions();
+        }
+
+        // Botón actualizar conexiones
+        document.getElementById('refresh-btn')?.addEventListener('click', () => refreshConnectionsPanel());
+        function updateRemoteSummary(id, data) { remoteSummaries.set(id, data); refreshConnectionsPanel(); }
+
+        function updateVideoSourceOptions() {
+            const sel = document.getElementById('video-source');
+            if (!sel) return;
+            const cur = sel.value;
+            // Rebuild options
+            sel.innerHTML = '';
+            const optLocal = document.createElement('option'); optLocal.value = 'local'; optLocal.textContent = 'Cámara local'; sel.appendChild(optLocal);
+            for (const [pid] of remoteStreams) {
+                const o = document.createElement('option'); o.value = `peer:${pid}`; o.textContent = `Nodo ${pid}`; sel.appendChild(o);
+            }
+            // Restore selection if still valid
+            if (cur && (cur === 'local' || remoteStreams.has(cur.replace('peer:','')))) sel.value = cur;
+            else sel.value = 'local';
+        }
+
+        async function attachMainVideoBySource(value) {
+            const statusEl = document.getElementById('status-camera');
+            if (!value || value === 'local') {
+                if (!localStream) await startCamera();
+                video.srcObject = localStream;
+                video.onloadedmetadata = () => adjustOverlayToVideo();
+                if (statusEl) statusEl.textContent = 'Cámara: Local';
+                return;
+            }
+            if (value.startsWith('peer:')) {
+                const pid = value.slice(5);
+                const rs = remoteStreams.get(pid);
+                if (rs) {
+                    video.srcObject = rs;
+                    video.onloadedmetadata = () => adjustOverlayToVideo();
+                    if (statusEl) statusEl.textContent = `Cámara: Nodo ${pid}`;
+                } else {
+                    if (statusEl) statusEl.textContent = 'Cámara: Nodo no disponible';
+                }
+            }
+        }
+
+        // Handlers de zonas
+        function getActiveZones() { return zonesByRole[currentRole]; }
+    function setZones(zs) {
+        const prevLen = (zonesByRole[currentRole] || []).length;
+        zonesByRole[currentRole] = zs.slice(0,4);
+        zonesCountEl.textContent = zonesByRole[currentRole].length;
+        saveZonesToStorage();
+        updateZoneMotionVisibility();
+        refreshZoneMotionTitlesAndVisibility();
+        refreshAllCamZoneBlocks();
+        ensureZoneMotionCharts();
+        updateZoneMotionCharts();
+        ensureZonePreviewCanvases();
+        if (prevLen === 0 && zonesByRole[currentRole].length > 0 && localStream) {
+            autoActivateZoneViews('zones-added');
+        }
+    // Compartir zonas con pares
+    try { p2p.broadcast({ type: 'zones', data: zonesByRole[currentRole] }); } catch {}
+    }
+
+        zonesBtn?.addEventListener('click', () => {
+            drawZonesMode = !drawZonesMode;
+            zonesBtn.textContent = drawZonesMode ? 'Salir de Definir Zonas' : 'Definir Zonas (máx. 4)';
+            if (drawZonesMode) {
+                overlayCanvas.style.pointerEvents = 'auto';
+            } else {
+                overlayCanvas.style.pointerEvents = 'none';
+            }
+        });
+
+        clearZonesBtn?.addEventListener('click', () => {
+            // Si se requiere permitir borrado manual: mantener botón. Si no, comentar para evitar borrados accidentales.
+            setZones([]);
+            ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+            selectedZoneIndex = -1;
+        });
+
+        editZonesBtn?.addEventListener('click', () => {
+            editZonesMode = !editZonesMode;
+            selectedZoneIndex = -1;
+            editZonesBtn.textContent = editZonesMode ? 'Salir de Edición' : 'Editar Zonas';
+            overlayCanvas.style.pointerEvents = editZonesMode ? 'auto' : (drawZonesMode ? 'auto' : 'none');
+        });
+
+        deleteZoneBtn?.addEventListener('click', () => {
+            const zs = getActiveZones();
+            if (selectedZoneIndex >= 0 && selectedZoneIndex < zs.length) {
+                zs.splice(selectedZoneIndex, 1);
+                setZones(zs);
+                selectedZoneIndex = -1;
+                ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+                drawZones(getActiveZones());
+            }
+        });
+        document.getElementById('rename-zone-btn')?.addEventListener('click', () => {
+            const zs = getActiveZones();
+            if (selectedZoneIndex < 0 || selectedZoneIndex >= zs.length) { alert('Selecciona una zona en "Editar Zonas"'); return; }
+            const current = zs[selectedZoneIndex].name || `Zona ${selectedZoneIndex+1}`;
+            const name = prompt('Nombre de la zona:', current);
+            if (name !== null) {
+                zs[selectedZoneIndex].name = String(name).trim().slice(0, 40);
+                setZones(zs);
+                ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+                drawZones(getActiveZones());
+            }
+        });
+
+        function hitTestHandles(z, x, y) {
+            const hs = 8;
+            const corners = {
+                nw: {x: z.x, y: z.y},
+                ne: {x: z.x + z.w, y: z.y},
+                sw: {x: z.x, y: z.y + z.h},
+                se: {x: z.x + z.w, y: z.y + z.h}
+            };
+            for (const [k, c] of Object.entries(corners)) {
+                if (Math.abs(x - c.x) <= hs && Math.abs(y - c.y) <= hs) return k;
+            }
+            // inside rect for move
+            if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) return 'move';
+            return null;
+        }
+
+        overlayCanvas.addEventListener('mousedown', (e) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            if (editZonesMode) {
+                const zs = getActiveZones();
+                selectedZoneIndex = -1;
+                resizeHandle = null;
+                // find topmost zone hit
+                for (let i = zs.length - 1; i >= 0; i--) {
+                    const h = hitTestHandles(zs[i], x, y);
+                    if (h) { selectedZoneIndex = i; resizeHandle = h; break; }
+                }
+                dragStart = {x, y};
+                return;
+            }
+            if (!drawZonesMode) return;
+            if (getActiveZones().length >= 4) { alert('Máximo 4 zonas'); return; }
+            dragStart = { x, y };
+            tempRect = { x, y, w: 0, h: 0 };
+        });
+        overlayCanvas.addEventListener('mousemove', (e) => {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            if (editZonesMode && selectedZoneIndex >= 0 && dragStart) {
+                const zs = getActiveZones();
+                const z = zs[selectedZoneIndex];
+                const dx = x - dragStart.x;
+                const dy = y - dragStart.y;
+                if (resizeHandle === 'move') {
+                    z.x += dx; z.y += dy;
+                } else if (resizeHandle === 'nw') {
+                    z.x += dx; z.y += dy; z.w -= dx; z.h -= dy;
+                } else if (resizeHandle === 'ne') {
+                    z.y += dy; z.w += dx; z.h -= dy;
+                } else if (resizeHandle === 'sw') {
+                    z.x += dx; z.w -= dx; z.h += dy;
+                } else if (resizeHandle === 'se') {
+                    z.w += dx; z.h += dy;
+                }
+                dragStart = {x, y};
+                ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+                drawZones(getActiveZones());
+                return;
+            }
+            if (!drawZonesMode || !dragStart) return;
+            tempRect.w = x - dragStart.x;
+            tempRect.h = y - dragStart.y;
+            ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+            drawZones(getActiveZones());
+        });
+        overlayCanvas.addEventListener('mouseup', () => {
+            if (editZonesMode) {
+                dragStart = null;
+                resizeHandle = null;
+                return;
+            }
+            if (!drawZonesMode || !dragStart) return;
+            // Normalize rect (positive width/height)
+            const x = Math.min(dragStart.x, dragStart.x + tempRect.w);
+            const y = Math.min(dragStart.y, dragStart.y + tempRect.h);
+            const w = Math.abs(tempRect.w);
+            const h = Math.abs(tempRect.h);
+            if (w > 10 && h > 10) {
+                const zs = getActiveZones();
+                zs.push({x, y, w, h});
+                setZones(zs);
+            }
+            dragStart = null;
+            tempRect = null;
+            ctx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+            drawZones(getActiveZones());
+        });
+
+        // Exportar reporte
+        function download(filename, text) {
+            const a = document.createElement('a');
+            a.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+            a.setAttribute('download', filename);
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+        document.getElementById('export-json-btn')?.addEventListener('click', () => {
+            download(`reporte_${Date.now()}.json`, JSON.stringify(report, null, 2));
+        });
+        document.getElementById('export-csv-btn')?.addEventListener('click', () => {
+            const headers = ['ts','role','class','id','score','x','y','w','h'];
+            const rows = report.map(r => [r.ts, r.role, r.class, r.id, r.score, r.bbox[0], r.bbox[1], r.bbox[2], r.bbox[3]]);
+            const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            download(`reporte_${Date.now()}.csv`, csv);
+        });
+        document.getElementById('clear-report-btn')?.addEventListener('click', () => {
+            report.length = 0;
+            if (eventLog) eventLog.textContent = '';
+        });
+
+        // ----- Panel derecho: zonas -----
+        const zonesGridEl = document.getElementById('zones-grid');
+        const zonesViewerHint = document.getElementById('zones-viewer-hint');
+        const rightTabZones = document.getElementById('right-tab-zones');
+        const rightTabConns = document.getElementById('right-tab-conns');
+        rightTabZones?.addEventListener('click', () => {
+            document.getElementById('zones-viewer').style.display = 'block';
+            document.getElementById('connections-panel').style.display = 'none';
+        });
+        rightTabConns?.addEventListener('click', () => {
+            document.getElementById('zones-viewer').style.display = 'none';
+            document.getElementById('connections-panel').style.display = 'block';
+        });
+
+        function setRightPanelTab(mode) {
+            const zv = document.getElementById('zones-viewer');
+            const cp = document.getElementById('connections-panel');
+            if (!zv || !cp) return;
+            if (mode === 'zones') { zv.style.display = 'block'; cp.style.display = 'none'; }
+            else if (mode === 'conns') { zv.style.display = 'none'; cp.style.display = 'block'; }
+        }
+
+        function autoActivateZoneViews(reason) {
+            try {
+                const zonesLen = (zonesByRole[currentRole] || []).length;
+                const camActive = !!localStream;
+                if (camActive && zonesLen > 0) {
+                    const wrap = document.getElementById('zone-motion-wrapper');
+                    if (wrap && (wrap.style.display === 'none' || wrap.style.display === '')) {
+                        wrap.style.display = 'block';
+                    }
+                    if (!autoSwitchedRightThisRun) {
+                        setRightPanelTab('zones');
+                        autoSwitchedRightThisRun = true;
+                    }
+                    if (!autoShownZoneMotionThisRun) autoShownZoneMotionThisRun = true;
+                }
+            } catch {}
+        }
+
+        // Inicialización
+    loadZonesFromStorage();
+    applyRoleUI();
+    initDownloadQR();
+    function updateZoneMotionVisibility() {
+        const wrap = document.getElementById('zone-motion-wrapper');
+        const active = zonesByRole[currentRole] || [];
+        if (!wrap) return;
+        wrap.style.display = (active.length && localStream) ? 'block' : 'none';
+    }
+    updateZoneMotionVisibility();
+    autoActivateZoneViews('init');
+        // Auto-iniciar cámara al cargar (en orígenes seguros) y arrancar detección
+        (async function tryAutoStartCamera() {
+            try {
+                const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                if (!isSecure) return; // navegadores bloquean getUserMedia en orígenes no seguros
+                if (localStream) return; // ya iniciada
+                const stCam = document.getElementById('status-camera');
+                if (stCam) stCam.textContent = 'Cámara: Solicitando permiso…';
+                await startCamera();
+                if (!detectorModel) await ensureDetector();
+                detectionLoop();
+            } catch (e) {
+                console.warn('Auto-start camera falló o fue denegado:', e);
+                const stCam = document.getElementById('status-camera');
+                if (stCam) stCam.textContent = 'Cámara: Toque "Iniciar"';
+            }
+        })();
+        // Botón de paleta: reasigna colores (mantiene verde para persona)
+        document.getElementById('palette-btn')?.addEventListener('click', () => {
+            paletteIndex = 0;
+            // Reinicia todos menos 'person'
+            for (const [k] of Array.from(classColors)) {
+                if (k !== 'person') classColors.delete(k);
+            }
+        });
+
+    // Descarga por QR (solo QR y copiar enlace)
+    const downloadUrlInput = document.querySelector('#tab5 #download-url');
+    const qrDownloadCanvas = document.querySelector('#tab5 #qr-download');
+    const updateDownloadQRBtn = document.querySelector('#tab5 #update-download-qr');
+    const copyDownloadUrlBtn = document.querySelector('#tab5 #copy-download-url');
+    const downloadUrlHint = document.querySelector('#tab5 #download-url-hint');
+
+        function generateDownloadQR() {
+            const url = (downloadUrlInput?.value || '').trim();
+            if (!url || !qrDownloadCanvas) return;
+            try {
+                QRCode.toCanvas(qrDownloadCanvas, url, (error) => {
+                    if (error) console.error('Error generating Download QR:', error);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function initDownloadQR() {
+            if (downloadUrlInput) downloadUrlInput.value = location.href;
+            if (downloadUrlHint) {
+                if (location.protocol === 'file:') {
+                    downloadUrlHint.textContent = 'Estás abriendo este archivo localmente (file://). Para que otros lo descarguen, súbelo a un hosting (p. ej., GitHub Pages) o expón un servidor accesible en tu red y pega aquí la URL pública.';
+                } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                    downloadUrlHint.textContent = 'Este enlace funciona en tu red local. Asegúrate de que el dispositivo que escanee el QR esté en la misma red.';
+                } else {
+                    downloadUrlHint.textContent = 'Comparte este enlace público; al escanear el QR se descargará/abrirá la página.';
+                }
+            }
+            generateDownloadQR();
+        }
+
+        updateDownloadQRBtn?.addEventListener('click', generateDownloadQR);
+        copyDownloadUrlBtn?.addEventListener('click', async () => {
+            const url = (downloadUrlInput?.value || '').trim();
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(url);
+                } else {
+                    // fallback
+                    downloadUrlInput?.select();
+                    document.execCommand('copy');
+                }
+            } catch (e) { console.error('No se pudo copiar:', e); }
+        });
+
+    // Se eliminaron funciones de compartir; solo actualizar QR
+    updateDownloadQRBtn?.addEventListener('click', () => { generateDownloadQR(); });
+
+    // Se eliminaron descargas de HTML y share HTML
+
+        // ======================
+        // Mapa (Leaflet) - Principal y Nodos
+        // ======================
+        const mapEl = document.getElementById('map-container');
+        let map, principalMarker;
+        const nodeMarkers = new Map(); // id -> marker
+        const nodes = []; // {id, name, lat, lng}
+        let principalLatLng = null;
+
+        function initMap() {
+            if (!mapEl) return;
+            map = L.map(mapEl).setView([0, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+            principalMarker = L.marker([0,0], { draggable: true }).addTo(map).bindPopup('Principal');
+            principalMarker.on('dragend', () => {
+                const ll = principalMarker.getLatLng();
+                principalLatLng = [ll.lat, ll.lng];
+                updatePrincipalPosLabel();
+            });
+        }
+
+        // Helpers de P2P UI (video remoto) y geolocalización remota
+        function ensureRemoteVideo(id, stream) {
+            const wrap = document.getElementById('remote-videos');
+            if (!wrap) return;
+            let box = wrap.querySelector(`[data-peer="${id}"]`);
+            if (!box) {
+                box = document.createElement('div');
+                box.setAttribute('data-peer', id);
+                box.style.border = '1px solid rgba(255,255,255,0.15)';
+                box.style.borderRadius = '8px';
+                box.style.padding = '6px';
+                const title = document.createElement('div'); title.className = 'small-text'; title.textContent = `Peer ${id}`; box.appendChild(title);
+                const vid = document.createElement('video'); vid.autoplay = true; vid.playsInline = true; vid.muted = true; vid.style.width = '100%'; box.appendChild(vid);
+                wrap.appendChild(box);
+            }
+            const vid = box.querySelector('video');
+            if (vid && vid.srcObject !== stream) vid.srcObject = stream;
+        }
+        const remoteGeoMarkers = new Map();
+        function updateRemoteGeo(id, { lat, lng }) {
+            if (!map) return;
+            let m = remoteGeoMarkers.get(id);
+            if (!m) {
+                m = L.marker([lat, lng]).addTo(map).bindPopup(`Peer ${id}`);
+                remoteGeoMarkers.set(id, m);
+            } else {
+                m.setLatLng([lat, lng]);
+            }
+        }
+
+        function updatePrincipalPosLabel() {
+            const label = document.getElementById('principal-pos');
+            if (!label) return;
+            if (principalLatLng) label.textContent = `${principalLatLng[0].toFixed(5)}, ${principalLatLng[1].toFixed(5)}`;
+            else label.textContent = '—';
+        }
+
+        function refreshNodesList() {
+            const cont = document.getElementById('nodes-list');
+            const count = document.getElementById('nodes-count');
+            if (count) count.textContent = nodes.length.toString();
+            if (!cont) return;
+            cont.innerHTML = '';
+            nodes.forEach(n => {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.style.padding = '4px 0';
+                div.innerHTML = `<span>#${n.id} ${n.name} (${n.lat.toFixed(5)}, ${n.lng.toFixed(5)})</span>`;
+                const actions = document.createElement('div');
+                const centerBtn = document.createElement('button');
+                centerBtn.className = 'btn btn-ghost';
+                centerBtn.textContent = 'Centrar';
+                centerBtn.onclick = () => map.setView([n.lat, n.lng], 16);
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'btn btn-ghost';
+                removeBtn.textContent = 'Eliminar';
+                removeBtn.onclick = () => removeNode(n.id);
+                actions.appendChild(centerBtn);
+                actions.appendChild(removeBtn);
+                div.appendChild(actions);
+                cont.appendChild(div);
+            });
+        }
+
+        function addOrUpdateNode(id, name, lat, lng) {
+            let node = nodes.find(x => x.id === id);
+            if (!node) {
+                node = { id, name, lat, lng };
+                nodes.push(node);
+            } else {
+                node.lat = lat; node.lng = lng;
+            }
+            if (!nodeMarkers.has(id)) {
+                const marker = L.marker([lat, lng], { draggable: true }).addTo(map).bindPopup(`${name} (#${id})`);
+                marker.on('dragend', () => {
+                    const ll = marker.getLatLng();
+                    addOrUpdateNode(id, name, ll.lat, ll.lng);
+                    refreshNodesList();
+                });
+                nodeMarkers.set(id, marker);
+            }
+            nodeMarkers.get(id).setLatLng([lat, lng]);
+            refreshNodesList();
+        }
+
+        function removeNode(id) {
+            const idx = nodes.findIndex(n => n.id === id);
+            if (idx >= 0) nodes.splice(idx, 1);
+            const m = nodeMarkers.get(id);
+            if (m) { map.removeLayer(m); nodeMarkers.delete(id); }
+            refreshNodesList();
+        }
+
+        // Geolocalización
+        const followBtn = document.getElementById('map-follow-btn');
+        const centerBtn = document.getElementById('map-center-btn');
+        const addNodeBtn = document.getElementById('map-add-node-btn');
+        let watchId = null;
+
+        followBtn?.addEventListener('click', () => {
+            if (!navigator.geolocation) { alert('Geolocalización no soportada'); return; }
+            if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; followBtn.textContent = 'Seguir mi ubicación'; return; }
+            watchId = navigator.geolocation.watchPosition(pos => {
+                const { latitude, longitude } = pos.coords;
+                principalLatLng = [latitude, longitude];
+                if (!map) return;
+                principalMarker.setLatLng([latitude, longitude]);
+                map.setView([latitude, longitude], 16);
+                updatePrincipalPosLabel();
+            }, err => console.warn(err), { enableHighAccuracy: true });
+            followBtn.textContent = 'Detener seguimiento';
+        });
+
+        centerBtn?.addEventListener('click', () => {
+            if (!principalLatLng) return; map.setView(principalLatLng, 16);
+        });
+
+        addNodeBtn?.addEventListener('click', () => {
+            const name = prompt('Nombre del nodo:','Nodo');
+            if (!name) return;
+            const lat = prompt('Latitud:', principalLatLng ? principalLatLng[0] : 0);
+            const lng = prompt('Longitud:', principalLatLng ? principalLatLng[1] : 0);
+            const id = Math.floor(Math.random()*9000)+1000;
+            const la = parseFloat(lat), lo = parseFloat(lng);
+            if (Number.isFinite(la) && Number.isFinite(lo)) {
+                addOrUpdateNode(id, name, la, lo);
+                if (map) map.setView([la, lo], 16);
+            }
+        });
+
+        // Inicializar mapa cuando se muestra la pestaña
+        const tabMap = document.querySelector('[data-tab="tab3"]');
+        tabMap?.addEventListener('click', () => {
+            if (!map) {
+                setTimeout(() => { initMap(); setTimeout(() => { if (map) map.invalidateSize(); }, 100); }, 50);
+            } else {
+                setTimeout(() => map.invalidateSize(), 100);
+            }
+        });
+    </script>
+</body>
+</html>
