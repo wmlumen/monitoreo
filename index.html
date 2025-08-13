@@ -42,25 +42,10 @@
             background: var(--panel-bg);
             border-radius: var(--radius);
             padding: 1rem;
-            overflow: hidden; /* Prevent overflow issues (we'll enable inner scroll where needed) */
+            overflow: hidden; /* Prevent overflow issues */
             display: flex;
             flex-direction: column;
         }
-        /* Allow inner tab content to scroll inside main panel */
-        .panel#main { min-height: 0; }
-        .panel#main .tab-content { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
-        /* Modern thin orange scrollbar only for Conexiones tab */
-        #tab5 { scrollbar-width: thin; scrollbar-color: #f59e0b transparent; }
-        #tab5::-webkit-scrollbar { width: 8px; height: 8px; }
-        #tab5::-webkit-scrollbar-track { background: transparent; }
-        #tab5::-webkit-scrollbar-thumb {
-            background-color: #f59e0b;
-            border-radius: 8px;
-            border: 2px solid transparent;
-            background-clip: content-box;
-        }
-        #tab5::-webkit-scrollbar-thumb:hover { background-color: #fbbf24; }
-        #tab5::-webkit-scrollbar-corner { background: transparent; }
         .panel-header {
             display: flex;
             justify-content: space-between;
@@ -250,10 +235,6 @@
             gap: 0.75rem;
             align-items: start;
         }
-        /* Improve stacking on tablet widths */
-        @media (max-width: 1024px) {
-            #tab5 .two-col { grid-template-columns: 1fr; gap: 1rem; }
-        }
         .mini-charts {
             display: grid;
             grid-template-columns: 1fr;
@@ -328,14 +309,12 @@
                 z-index: 999;
             }
             .two-col { grid-template-columns: 1fr; }
-            /* Ensure connections content can scroll vertically on small screens */
-            .panel#main .tab-content { overflow-y: auto; }
         }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <div class="panel" id="left">
+    <div class="panel" id="left">
             <div class="panel-header">
                 <div class="panel-title">MultiSensor Pro</div>
                 <button class="btn btn-ghost" id="role-toggle">
@@ -360,11 +339,11 @@
             <div class="map-container" id="map"></div>
             <!-- Conexiones movidas a la pestaña "Conexiones" -->
         </div>
-        <div class="panel" id="main">
+    <div class="panel" id="main">
             <div class="tabs">
                 <div class="tab active" data-tab="tab1">Cámara</div>
                 <div class="tab" data-tab="tab2">Zonas</div>
-                <div class="tab" data-tab="tab3" id="tab-chat-btn"><i class="fas fa-comments"></i> Chat</div>
+                <div class="tab" data-tab="tab3">Mapa</div>
                 <div class="tab" data-tab="tab4">Monitoreo</div>
                 <div class="tab" data-tab="tab5">Conexiones</div>
             </div>
@@ -448,194 +427,17 @@
                 </div>
             </div>
             <div id="tab3" class="tab-content">
-                <!-- Chat integrado en la pestaña principal -->
-                <div id="chat-box-tab" class="config-box" style="margin-top:1rem;">
-                    <h2 style="text-align:center;">Chat</h2>
-                    <div id="chat-messages-tab" style="height:180px;overflow-y:auto;background:rgba(255,255,255,0.03);border-radius:8px;padding:6px 4px 4px 4px;margin-bottom:6px;font-size:0.95em;display:flex;flex-direction:column;gap:2px;"></div>
-                    <div style="display:flex;gap:4px;align-items:center;">
-                        <input id="chat-input-tab" type="text" maxlength="200" placeholder="Escribe un mensaje..." style="flex:1;">
-                        <input type="file" id="chat-file-tab" accept="image/*,video/*" style="display:none;">
-                        <button class="btn btn-ghost" id="chat-attach-tab" title="Adjuntar foto o video"><i class="fas fa-paperclip"></i></button>
-                        <button class="btn btn-primary" id="chat-send-tab">Enviar</button>
+                <div class="controls config-box">
+                    <div class="input-group">
+                        <button id="map-follow-btn" class="btn btn-ghost"><i class="fas fa-location-arrow"></i> Seguir mi ubicación</button>
+                        <button id="map-center-btn" class="btn btn-ghost"><i class="fas fa-crosshairs"></i> Centrar en Principal</button>
+                        <button id="map-add-node-btn" class="btn btn-ghost"><i class="fas fa-plus"></i> Agregar Nodo</button>
                     </div>
+                    <div class="small-text">Principal: <span id="principal-pos">—</span> | Nodos: <span id="nodes-count">0</span></div>
                 </div>
+                <div id="map-container" class="map-container"></div>
+                <div class="config-box small-text" id="nodes-list" style="margin-top:8px; max-height:180px; overflow:auto;"></div>
             </div>
-// --- Chat en pestaña principal (tab3) ---
-const chatTabBtn = document.getElementById('tab-chat-btn');
-const chatBoxTab = document.getElementById('chat-box-tab');
-const chatMessagesTab = document.getElementById('chat-messages-tab');
-const chatInputTab = document.getElementById('chat-input-tab');
-const chatSendTab = document.getElementById('chat-send-tab');
-const chatAttachTab = document.getElementById('chat-attach-tab');
-const chatFileTab = document.getElementById('chat-file-tab');
-let chatTabUnread = 0;
-
-function renderChatHistoryTab() {
-    if (!chatMessagesTab) return;
-    chatMessagesTab.innerHTML = '';
-    let lastDay = '';
-    for (const m of chatHistory) {
-        const d = new Date(m.ts);
-        const day = d.toLocaleDateString();
-        if (day !== lastDay) {
-            const dayDiv = document.createElement('div');
-            dayDiv.textContent = day;
-            dayDiv.style.textAlign = 'center';
-            dayDiv.style.fontSize = '0.85em';
-            dayDiv.style.color = '#f59e0b';
-            dayDiv.style.margin = '8px 0 2px 0';
-            chatMessagesTab.appendChild(dayDiv);
-            lastDay = day;
-        }
-        appendChatMsgTab(m, false, true);
-    }
-    chatMessagesTab.scrollTop = chatMessagesTab.scrollHeight;
-}
-
-function appendChatMsgTab(msgObj, fromSelf, skipSave) {
-    // msgObj: {msg, fromSelf, ts, type, media}
-    const div = document.createElement('div');
-    const ts = new Date(msgObj.ts || Date.now());
-    const time = ts.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    const role = getRoleLabel(fromSelf ?? msgObj.fromSelf);
-    div.className = 'chat-bubble';
-    div.style.alignSelf = (fromSelf ?? msgObj.fromSelf) ? 'flex-end' : 'flex-start';
-    div.style.background = (fromSelf ?? msgObj.fromSelf) ? 'linear-gradient(120deg,#f59e0b22,#f59e0b11)' : 'linear-gradient(120deg,#06b6d422,#06b6d411)';
-    div.style.color = '#fff';
-    div.style.padding = '7px 12px';
-    div.style.borderRadius = '16px';
-    div.style.margin = '2px 0';
-    div.style.maxWidth = '80%';
-    div.style.wordBreak = 'break-word';
-    // Header
-    const head = document.createElement('div');
-    head.style.fontSize = '0.8em';
-    head.style.opacity = '0.7';
-    head.textContent = `[${time}] ${role}`;
-    div.appendChild(head);
-    // Imagen
-    if (msgObj.type === 'img' && msgObj.media) {
-        const img = document.createElement('img');
-        img.src = msgObj.media;
-        img.style.maxWidth = '180px';
-        img.style.maxHeight = '120px';
-        img.style.display = 'block';
-        img.style.margin = '4px 0';
-        img.style.borderRadius = '8px';
-        div.appendChild(img);
-    }
-    // Video
-    if (msgObj.type === 'vid' && msgObj.media) {
-        const vid = document.createElement('video');
-        vid.src = msgObj.media;
-        vid.controls = true;
-        vid.style.maxWidth = '180px';
-        vid.style.maxHeight = '120px';
-        vid.style.display = 'block';
-        vid.style.margin = '4px 0';
-        vid.style.borderRadius = '8px';
-        div.appendChild(vid);
-    }
-    // Texto
-    if (msgObj.msg) {
-        const body = document.createElement('div');
-        body.textContent = msgObj.msg;
-        body.style.fontSize = '1.05em';
-        body.style.marginTop = '2px';
-        div.appendChild(body);
-    }
-    chatMessagesTab.appendChild(div);
-    chatMessagesTab.scrollTop = chatMessagesTab.scrollHeight;
-}
-
-function sendChatMsgTab() {
-    const txt = (chatInputTab?.value || '').trim();
-    if (!txt) return;
-    const msgObj = {msg: txt, fromSelf: true, ts: Date.now(), type: 'txt'};
-    appendChatMsgTab(msgObj, true);
-    appendChatMsg(msgObj, true); // también en el panel lateral
-    try { p2p.broadcast({ type: 'chat', data: msgObj }); } catch {}
-    if (chatInputTab) chatInputTab.value = '';
-}
-chatSendTab?.addEventListener('click', sendChatMsgTab);
-chatInputTab?.addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMsgTab(); });
-chatAttachTab?.addEventListener('click', () => chatFileTab?.click());
-chatFileTab?.addEventListener('change', e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    handleFileSendTab(file);
-    chatFileTab.value = '';
-});
-function handleFileSendTab(file) {
-    if (!file) return;
-    const isImg = file.type.startsWith('image/');
-    const isVid = file.type.startsWith('video/');
-    if (!isImg && !isVid) return alert('Solo se permiten imágenes o videos');
-    const reader = new FileReader();
-    reader.onload = () => {
-        const msgObj = {msg: '', fromSelf: true, ts: Date.now(), type: isImg ? 'img' : 'vid', media: reader.result};
-        appendChatMsgTab(msgObj, true);
-        appendChatMsg(msgObj, true);
-        try { p2p.broadcast({ type: 'chat', data: msgObj }); } catch {}
-    };
-    reader.readAsDataURL(file);
-}
-chatInputTab?.addEventListener('paste', e => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const it of items) {
-        if (it.type.startsWith('image/') || it.type.startsWith('video/')) {
-            const file = it.getAsFile();
-            handleFileSendTab(file);
-        }
-    }
-});
-chatInputTab?.addEventListener('drop', e => {
-    e.preventDefault();
-    const files = e.dataTransfer?.files;
-    if (!files) return;
-    for (const file of files) {
-        if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-            handleFileSendTab(file);
-        }
-    }
-});
-chatInputTab?.addEventListener('dragover', e => e.preventDefault());
-
-// Notificación de mensajes no leídos en la pestaña Chat
-function markChatTabUnread() {
-    chatTabUnread++;
-    if (chatTabBtn) chatTabBtn.style.background = '#f59e0b';
-    if (chatTabBtn) chatTabBtn.style.color = '#181c24';
-}
-function clearChatTabUnread() {
-    chatTabUnread = 0;
-    if (chatTabBtn) chatTabBtn.style.background = '';
-    if (chatTabBtn) chatTabBtn.style.color = '';
-}
-// Detectar cambio de pestaña
-const tabEls = document.querySelectorAll('.tab');
-tabEls.forEach(tab => {
-    tab.addEventListener('click', () => {
-        if (tab.dataset.tab === 'tab3') clearChatTabUnread();
-    });
-});
-
-// Al recibir mensaje, si no está activa la pestaña Chat, marcar notificación
-const prevOnMsgTab = p2p.onMessage;
-p2p.onMessage = (fromId, msg) => {
-    if (msg?.type === 'chat' && msg.data) {
-        appendChatMsgTab({...msg.data, fromSelf: false});
-        appendChatMsg({...msg.data, fromSelf: false});
-        // Si la pestaña Chat no está activa, marcar
-        const activeTab = document.querySelector('.tab.active');
-        if (!activeTab || activeTab.dataset.tab !== 'tab3') markChatTabUnread();
-    }
-    if (prevOnMsgTab) prevOnMsgTab(fromId, msg);
-};
-
-// Al cargar, restaurar historial en tab3
-setTimeout(renderChatHistoryTab, 120);
             <div id="tab4" class="tab-content">
                 <div class="controls config-box">
                     <div class="input-group">
@@ -733,24 +535,13 @@ setTimeout(renderChatHistoryTab, 120);
                 <div id="node-tools" class="config-box" style="margin-top:8px;">
                     <h2>Herramientas del Nodo</h2>
                     <div class="controls">
-                        <label for="connection-input">Código del Principal (A123B):</label>
+                        <label for="connection-input">Introduce el código del Principal (A123B):</label>
                         <input type="text" id="connection-input">
+                        <button class="btn btn-primary" id="connect-btn">Guardar código</button>
                     </div>
                     <div class="controls" style="margin-top:6px;">
                         <label for="project-input">Código de proyecto (A123B):</label>
                         <input type="text" id="project-input">
-                        <button class="btn btn-primary" id="connect-btn">Guardar códigos</button>
-                    </div>
-                    <div class="config-box" style="margin-top:10px;">
-                        <div class="small-text" style="font-weight:600;">Enviar imagen y código al Principal</div>
-                        <div class="input-group">
-                            <label for="nodo-codigo">Código Nodo</label>
-                            <input type="text" id="nodo-codigo" maxlength="20" placeholder="Ej: NODO01">
-                            <input type="file" id="nodo-img-file" accept="image/*" style="display:none;">
-                            <button class="btn btn-ghost" id="nodo-img-btn"><i class="fas fa-camera"></i> Adjuntar foto</button>
-                            <button class="btn btn-primary" id="nodo-enviar-btn">Enviar</button>
-                        </div>
-                        <div id="nodo-img-preview" style="margin-top:6px;"></div>
                     </div>
                     <hr>
                     <div class="config-box">
@@ -765,158 +556,119 @@ setTimeout(renderChatHistoryTab, 120);
                       <textarea id="p2p-answer-out" rows="4" readonly></textarea>
                     </div>
                 </div>
-// Nodo: enviar imagen y código al Principal
-const nodoImgBtn = document.getElementById('nodo-img-btn');
-const nodoImgFile = document.getElementById('nodo-img-file');
-const nodoEnviarBtn = document.getElementById('nodo-enviar-btn');
-const nodoCodigo = document.getElementById('nodo-codigo');
-const nodoImgPreview = document.getElementById('nodo-img-preview');
-let nodoImgData = '';
-nodoImgBtn?.addEventListener('click', () => nodoImgFile?.click());
-nodoImgFile?.addEventListener('change', e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-        nodoImgData = reader.result;
-        nodoImgPreview.innerHTML = `<img src='${nodoImgData}' style='max-width:120px;max-height:80px;border-radius:8px;'>`;
-    };
-    reader.readAsDataURL(file);
-});
-nodoEnviarBtn?.addEventListener('click', () => {
-    const code = (nodoCodigo?.value || '').trim();
-    if (!code) return alert('Ingresa el código del Nodo');
-    if (!nodoImgData) return alert('Adjunta una imagen');
-    try {
-        p2p.broadcast({ type: 'nodoimg', data: { code, img: nodoImgData, ts: Date.now() } });
-        alert('Enviado al Principal');
-    } catch { alert('No se pudo enviar'); }
-});
-// Principal: galería de imágenes de Nodos
-let nodoImgs = [];
-function renderNodoImgs() {
-    const cont = document.getElementById('nodo-imgs-gal');
-    if (!cont) return;
-    cont.innerHTML = '';
-    if (!nodoImgs.length) { cont.innerHTML = '<div class="small-text">Sin imágenes de Nodos aún.</div>'; return; }
-    for (const n of nodoImgs) {
-        const wrap = document.createElement('div');
-        wrap.style.display = 'flex';
-        wrap.style.alignItems = 'center';
-        wrap.style.gap = '10px';
-        wrap.style.marginBottom = '8px';
-        wrap.style.background = 'rgba(255,255,255,0.03)';
-        wrap.style.borderRadius = '8px';
-        wrap.style.padding = '6px';
-        const img = document.createElement('img');
-        img.src = n.img;
-        img.style.maxWidth = '80px';
-        img.style.maxHeight = '60px';
-        img.style.borderRadius = '6px';
-        const meta = document.createElement('div');
-        meta.innerHTML = `<div style='font-weight:600;color:#f59e0b;'>${n.code}</div><div class='small-text'>${new Date(n.ts).toLocaleString()}</div>`;
-        wrap.appendChild(img);
-        wrap.appendChild(meta);
-        cont.appendChild(wrap);
-    }
-}
-// Recibir imágenes de Nodos
-const prevOnMsgNodoImg = p2p.onMessage;
-p2p.onMessage = (fromId, msg) => {
-    if (msg?.type === 'nodoimg' && msg.data) {
-        nodoImgs.push(msg.data);
-        renderNodoImgs();
-    }
-    if (prevOnMsgNodoImg) prevOnMsgNodoImg(fromId, msg);
-};
-            <div id="nodo-imgs-gal" class="config-box" style="margin-top:1rem;"></div>
 
-// Exportar conversación (ZIP con HTML y multimedia)
-const chatExport = document.getElementById('chat-export');
-const chatDateFrom = document.getElementById('chat-date-from');
-const chatDateTo = document.getElementById('chat-date-to');
-chatExport?.addEventListener('click', async () => {
-const chatAttach = document.getElementById('chat-attach');
-const chatFile = document.getElementById('chat-file');
-chatAttach?.addEventListener('click', () => chatFile?.click());
-chatFile?.addEventListener('change', e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    handleFileSend(file);
-    chatFile.value = '';
-});
-
-function handleFileSend(file) {
-    if (!file) return;
-    const isImg = file.type.startsWith('image/');
-    const isVid = file.type.startsWith('video/');
-    if (!isImg && !isVid) return alert('Solo se permiten imágenes o videos');
-    const reader = new FileReader();
-    reader.onload = () => {
-        const msgObj = {msg: '', fromSelf: true, ts: Date.now(), type: isImg ? 'img' : 'vid', media: reader.result};
-        appendChatMsg(msgObj, true);
-        try { p2p.broadcast({ type: 'chat', data: msgObj }); } catch {}
-    };
-    reader.readAsDataURL(file);
-}
-    chatMessages.appendChild(div);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    if (!skipSave) {
-        chatHistory.push(msgObj);
-        if (chatHistory.length > 200) chatHistory.shift();
-        saveChatHistory();
-    }
-}
-
-function sendChatMsg() {
-    const txt = (chatInput?.value || '').trim();
-    if (!txt) return;
-    const msgObj = {msg: txt, fromSelf: true, ts: Date.now(), type: 'txt'};
-    appendChatMsg(msgObj, true);
-    try { p2p.broadcast({ type: 'chat', data: msgObj }); } catch {}
-    if (chatInput) chatInput.value = '';
-}
-chatSend?.addEventListener('click', sendChatMsg);
-chatInput?.addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMsg(); });
-
-// Drag & drop or paste image/video
-chatInput?.addEventListener('paste', e => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const it of items) {
-        if (it.type.startsWith('image/') || it.type.startsWith('video/')) {
-            const file = it.getAsFile();
-            handleFileSend(file);
-        }
-    }
-});
-chatInput?.addEventListener('drop', e => {
-    e.preventDefault();
-    const files = e.dataTransfer?.files;
-    if (!files) return;
-    for (const file of files) {
-        if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-            handleFileSend(file);
-        }
-    }
-});
-chatInput?.addEventListener('dragover', e => e.preventDefault());
-
-// Recibir mensajes de chat
-const prevOnMsg = p2p.onMessage;
-p2p.onMessage = (fromId, msg) => {
-    if (msg?.type === 'chat' && msg.data) {
-        appendChatMsg({...msg.data, fromSelf: false});
-    }
-    if (prevOnMsg) prevOnMsg(fromId, msg);
-};
-
-// Al cargar, restaurar historial
-chatHistory = loadChatHistory();
-setTimeout(renderChatHistory, 100);
+                <div class="footer">
+                    <p class="small-text">MultiSensor Pro - Todos los derechos reservados.</p>
+                </div>
             </div>
         </div>
         <div class="panel" id="right">
+            <div class="config-box" id="nodo-imagenes-box" style="margin-bottom:16px;">
+                <div class="small-text" style="font-weight:600;margin-bottom:6px;">Vistas en tiempo real de Nodos</div>
+                <div id="nodo-videos-galeria" style="display:flex;flex-direction:column;gap:14px;"></div>
+                <script>
+                // Drag & drop para reordenar cámaras de Nodos y guardar orden en localStorage
+                const galeria = document.getElementById('nodo-videos-galeria');
+                let dragSrc = null;
+                function saveOrder() {
+                    const ids = Array.from(galeria.children).map(wrap => wrap.dataset.nodoId);
+                    localStorage.setItem('nodoVideosOrder', JSON.stringify(ids));
+                }
+                function restoreOrder() {
+                    const ids = JSON.parse(localStorage.getItem('nodoVideosOrder') || '[]');
+                    if (!ids.length) return;
+                    const nodes = {};
+                    Array.from(galeria.children).forEach(wrap => { nodes[wrap.dataset.nodoId] = wrap; });
+                    ids.forEach(id => {
+                        if (nodes[id]) galeria.appendChild(nodes[id]);
+                    });
+                }
+                function handleDragStart(e) {
+                    dragSrc = this;
+                    this.style.opacity = '0.5';
+                    e.dataTransfer.effectAllowed = 'move';
+                }
+                function handleDragEnd() {
+                    this.style.opacity = '';
+                    saveOrder();
+                }
+                function handleDragOver(e) {
+                    if (e.preventDefault) e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    return false;
+                }
+                function handleDrop(e) {
+                    if (e.stopPropagation) e.stopPropagation();
+                    if (dragSrc && dragSrc !== this) {
+                        if (this.parentNode) {
+                            this.parentNode.insertBefore(dragSrc, this);
+                            saveOrder();
+                        }
+                    }
+                    return false;
+                }
+                function addDnDHandlers(el) {
+                    el.setAttribute('draggable', 'true');
+                    el.addEventListener('dragstart', handleDragStart);
+                    el.addEventListener('dragend', handleDragEnd);
+                    el.addEventListener('dragover', handleDragOver);
+                    el.addEventListener('drop', handleDrop);
+                }
+                // Hook para añadir drag&drop a cada nuevo video y restaurar orden
+                const observer = new MutationObserver(() => {
+                    galeria.querySelectorAll('div').forEach(addDnDHandlers);
+                    restoreOrder();
+                });
+                observer.observe(galeria, { childList: true });
+                </script>
+            </div>
+// --- Vistas en tiempo real de Nodos en el Principal ---
+const nodoVideosGaleria = document.getElementById('nodo-videos-galeria');
+if (nodoVideosGaleria && (window.roleSelect?.value === 'primary' || window.roleSelect?.value === 'principal')) {
+    // Map de nodos a video DOM
+    const nodoVideosMap = new Map();
+    if (window.p2p) {
+        // Hook para cada stream remoto
+        const origOnRemoteStream = p2p.onRemoteStream;
+        p2p.onRemoteStream = function (id, stream) {
+            // Crear o actualizar video
+            let wrap = nodoVideosMap.get(id);
+            if (!wrap) {
+                wrap = document.createElement('div');
+                wrap.style.display = 'flex';
+                wrap.style.flexDirection = 'column';
+                wrap.style.alignItems = 'center';
+                wrap.style.background = 'rgba(255,255,255,0.04)';
+                wrap.style.borderRadius = '8px';
+                wrap.style.padding = '8px 4px';
+                wrap.style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)';
+                const label = document.createElement('div');
+                label.className = 'small-text';
+                label.textContent = `Nodo ${id}`;
+                label.style.marginBottom = '4px';
+                const vid = document.createElement('video');
+                vid.autoplay = true;
+                vid.playsInline = true;
+                vid.muted = true;
+                vid.style.width = '100%';
+                vid.style.height = 'auto';
+                vid.style.maxWidth = '100%';
+                vid.style.aspectRatio = '16/9';
+                vid.style.objectFit = 'contain';
+                vid.style.background = '#000';
+                vid.style.borderRadius = '8px';
+                vid.style.boxShadow = '0 1px 4px rgba(0,0,0,0.08)';
+                wrap.appendChild(label);
+                wrap.appendChild(vid);
+                nodoVideosGaleria.appendChild(wrap);
+                nodoVideosMap.set(id, wrap);
+            }
+            const vid = wrap.querySelector('video');
+            if (vid) vid.srcObject = stream;
+            if (typeof origOnRemoteStream === 'function') origOnRemoteStream.call(this, id, stream);
+        };
+    }
+}
             <div class="panel-header">
                 <div class="panel-title">Panel derecho</div>
             </div>
@@ -1918,24 +1670,26 @@ setTimeout(renderChatHistory, 100);
     function saveProjectCode(code) { try { localStorage.setItem(PROJ_KEY, code); } catch {} }
     function loadProjectCode() { try { return localStorage.getItem(PROJ_KEY) || ''; } catch { return ''; } }
 
-        function applyRoleUI() {
+    function applyRoleUI() {
             if (roleSelect?.value === 'primary' || roleSelect?.value === 'principal') {
                 currentRole = 'principal';
                 principalTools.style.display = 'block';
                 nodeTools.style.display = 'none';
-                generateQRCode();
-                const pc = loadPairCode();
-                const pe = document.getElementById('pairing-code'); if (pe) pe.value = pc || genPairCode();
-                if (!pc) savePairCode(pe.value);
-                const proj = loadProjectCode();
-                const ppe = document.getElementById('project-code'); if (ppe) ppe.value = proj || '';
+        generateQRCode();
+        const pc = loadPairCode();
+        const pe = document.getElementById('pairing-code'); if (pe) pe.value = pc || genPairCode();
+        if (!pc) savePairCode(pe.value);
+        const proj = loadProjectCode();
+        const ppe = document.getElementById('project-code'); if (ppe) ppe.value = proj || '';
             } else {
                 currentRole = 'node';
                 principalTools.style.display = 'none';
                 nodeTools.style.display = 'block';
-                // Prefill project code if saved
+        // Prefill node input if saved
+        const pc = loadPairCode();
+        const ci = document.getElementById('connection-input'); if (ci && pc) ci.value = pc;
                 const proj = loadProjectCode();
-                const pi = document.getElementById('project-input'); if (pi && proj) pi.value = proj;
+        const pi = document.getElementById('project-input'); if (pi && proj) pi.value = proj;
                 // En nodo, desactivar detección por defecto (solo movimiento)
                 detectionEnabled = false;
                 const detBtn = document.getElementById('detect-toggle'); if (detBtn) detBtn.textContent = 'Detección: OFF';
@@ -1943,28 +1697,19 @@ setTimeout(renderChatHistory, 100);
             zonesCountEl.textContent = zonesByRole[currentRole].length;
             // Redibujar zonas al cambiar de rol
             ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+                                                                                        
+
             drawZones(zonesByRole[currentRole]);
             updateZoneMotionVisibility();
             ensureZonePreviewCanvases();
             autoActivateZoneViews('role-change');
-            updateRoleChartsVisibility();
+        updateRoleChartsVisibility();
         }
 
         roleSelect?.addEventListener('change', applyRoleUI);
 
-        function buildShareUrl(roleHint) {
-            const url = new URL(location.origin + location.pathname);
-            url.searchParams.set('id', deviceId);
-            const pair = loadPairCode();
-            const proj = loadProjectCode();
-            if (pair && /^[A-Z][0-9]{3}[A-Z]$/.test(pair)) url.searchParams.set('pair', pair);
-            if (proj && /^[A-Z][0-9]{3}[A-Z]$/.test(proj)) url.searchParams.set('project', proj);
-            if (roleHint) url.searchParams.set('role', roleHint);
-            return url.toString();
-        }
         function generateQRCode() {
-            // Compartir URL con códigos y sugerencia de rol "node" para nodos móviles
-            const connectionCode = buildShareUrl('node');
+            const connectionCode = `${location.origin}?id=${deviceId}`;
             if (connectionCodeInput) connectionCodeInput.value = connectionCode;
             if (qrCodeCanvas) {
                 QRCode.toCanvas(qrCodeCanvas, connectionCode, (error) => {
@@ -1974,12 +1719,12 @@ setTimeout(renderChatHistory, 100);
         }
 
         connectBtn?.addEventListener('click', () => {
-            const principalCode = (document.getElementById('connection-input')?.value || '').trim().toUpperCase();
-            if (!/^[A-Z][0-9]{3}[A-Z]$/.test(principalCode)) { alert('Código del Principal inválido (A123B).'); return; }
+            const principalCode = (connectionInput.value || '').trim().toUpperCase();
+            if (!/^[A-Z][0-9]{3}[A-Z]$/.test(principalCode)) { alert('Código inválido. Usa formato A123B.'); return; }
             savePairCode(principalCode);
             const projCode = (document.getElementById('project-input')?.value || '').trim().toUpperCase();
-            if (!/^[A-Z][0-9]{3}[A-Z]$/.test(projCode)) { alert('Código de proyecto inválido (A123B).'); return; }
-            saveProjectCode(projCode);
+            if (projCode && !/^[A-Z][0-9]{3}[A-Z]$/.test(projCode)) { alert('Código de proyecto inválido (A123B).'); return; }
+            if (projCode) saveProjectCode(projCode);
             alert('Códigos guardados. Puedes proceder a emparejar con Oferta/Respuesta.');
         });
 
@@ -2074,11 +1819,11 @@ setTimeout(renderChatHistory, 100);
             }
             async acceptOffer(offerObj) {
                 const { remoteId, sdp } = offerObj;
-                // Validar ambos códigos
+                // Validate pairing code if set on this side and present
                 const myCode = this.expectedPairCode;
                 const myProj = this.expectedProjectCode;
                 if (myCode && offerObj && offerObj.code && String(offerObj.code).toUpperCase() !== String(myCode).toUpperCase()) {
-                    throw new Error('Código del Principal no coincide');
+                    throw new Error('Código de emparejamiento no coincide');
                 }
                 if (myProj && offerObj && offerObj.project && String(offerObj.project).toUpperCase() !== String(myProj).toUpperCase()) {
                     throw new Error('Código de proyecto no coincide');
@@ -2092,11 +1837,11 @@ setTimeout(renderChatHistory, 100);
             }
             async applyAnswer(answerObj) {
                 const { remoteId, sdp } = answerObj;
-                // Validar ambos códigos
+                // Validate pairing code
                 const myCode = this.expectedPairCode;
                 const myProj = this.expectedProjectCode;
                 if (myCode && answerObj && answerObj.code && String(answerObj.code).toUpperCase() !== String(myCode).toUpperCase()) {
-                    throw new Error('Código del Principal no coincide');
+                    throw new Error('Código de emparejamiento no coincide');
                 }
                 if (myProj && answerObj && answerObj.project && String(answerObj.project).toUpperCase() !== String(myProj).toUpperCase()) {
                     throw new Error('Código de proyecto no coincide');
@@ -2321,74 +2066,20 @@ setTimeout(renderChatHistory, 100);
         document.getElementById('refresh-btn')?.addEventListener('click', () => refreshConnectionsPanel());
         function updateRemoteSummary(id, data) { remoteSummaries.set(id, data); refreshConnectionsPanel(); }
 
-        async function updateVideoSourceOptions() {
+        function updateVideoSourceOptions() {
             const sel = document.getElementById('video-source');
             if (!sel) return;
             const cur = sel.value;
             // Rebuild options
             sel.innerHTML = '';
             const optLocal = document.createElement('option'); optLocal.value = 'local'; optLocal.textContent = 'Cámara local'; sel.appendChild(optLocal);
-            let firstPeer = null;
             for (const [pid] of remoteStreams) {
-                if (!firstPeer) firstPeer = pid;
                 const o = document.createElement('option'); o.value = `peer:${pid}`; o.textContent = `Nodo ${pid}`; sel.appendChild(o);
             }
-            // Mostrar todas las cámaras de Nodos conectados en columna (solo Principal)
-            const isPrincipal = (roleSelect?.value === 'primary' || roleSelect?.value === 'principal');
-            const isNode = (roleSelect?.value === 'node' || roleSelect?.value === 'nodo');
-            const grid = document.getElementById('principal-nodos-grid');
-            const sidebar = document.getElementById('principal-sidebar');
-            const mainRow = document.getElementById('principal-main-row');
-            if (isPrincipal) {
-                if (mainRow) mainRow.style.display = '';
-                if (sidebar) sidebar.style.display = '';
-                if (grid) {
-                    grid.style.display = 'flex';
-                    grid.innerHTML = '';
-                    for (const [pid, stream] of remoteStreams) {
-                        const wrap = document.createElement('div');
-                        wrap.style.background = 'rgba(255,255,255,0.03)';
-                        wrap.style.borderRadius = '8px';
-                        wrap.style.padding = '14px 10px';
-                        wrap.style.margin = '0 0 14px 0';
-                        wrap.style.display = 'flex';
-                        wrap.style.flexDirection = 'column';
-                        wrap.style.alignItems = 'center';
-                        const title = document.createElement('div');
-                        title.className = 'small-text';
-                        title.textContent = `Nodo ${pid}`;
-                        const vid = document.createElement('video');
-                        vid.autoplay = true; vid.playsInline = true; vid.muted = true; vid.style.width = '340px'; vid.style.height = '220px';
-                        vid.srcObject = stream;
-                        wrap.appendChild(title);
-                        wrap.appendChild(vid);
-                        grid.appendChild(wrap);
-                    }
-                }
-            } else if (isNode) {
-                if (mainRow) mainRow.style.display = 'none';
-                if (sidebar) sidebar.style.display = 'none';
-                if (grid) grid.style.display = 'none';
-            }
-            // Auto-select first peer if Principal and not already selected
-            if (isPrincipal && firstPeer && (cur === 'local' || !remoteStreams.has(cur.replace('peer:','')))) {
-                sel.value = `peer:${firstPeer}`;
-                attachMainVideoBySource(sel.value);
-            } else if (cur && (cur === 'local' || remoteStreams.has(cur.replace('peer:','')))) {
-                sel.value = cur;
-            } else {
-                sel.value = 'local';
-            }
+            // Restore selection if still valid
+            if (cur && (cur === 'local' || remoteStreams.has(cur.replace('peer:','')))) sel.value = cur;
+            else sel.value = 'local';
         }
-            <div id="principal-main-row" style="display:flex;flex-direction:row;align-items:flex-start;width:100%;">
-                <div id="principal-nodos-grid" style="display:flex;flex-direction:column;gap:18px;flex:1 1 0%;max-width:70%;"></div>
-                <div id="principal-sidebar" style="display:flex;flex-direction:column;min-width:180px;max-width:260px;margin-left:16px;background:rgba(0,0,0,0.08);border-radius:8px;padding:8px 4px;">
-                    <div style="font-weight:bold;margin-bottom:8px;">Panel</div>
-                    <div class="sidebar-tab" data-tab="camaras" style="cursor:pointer;padding:6px 8px;border-radius:4px;background:#e0e0e0;margin-bottom:4px;">Cámaras</div>
-                    <div class="sidebar-tab" data-tab="chat" style="cursor:pointer;padding:6px 8px;border-radius:4px;margin-bottom:4px;">Chat</div>
-                    <div class="sidebar-tab" data-tab="imagenes" style="cursor:pointer;padding:6px 8px;border-radius:4px;">Imágenes</div>
-                </div>
-            </div>
 
         async function attachMainVideoBySource(value) {
             const statusEl = document.getElementById('status-camera');
@@ -2636,36 +2327,7 @@ setTimeout(renderChatHistory, 100);
 
         // Inicialización
     loadZonesFromStorage();
-        // Prefill desde URL (pair, project, role)
-        (function parseUrlParams() {
-            try {
-                const usp = new URLSearchParams(location.search);
-                const pair = (usp.get('pair') || '').toUpperCase();
-                const proj = (usp.get('project') || '').toUpperCase();
-                const role = (usp.get('role') || '').toLowerCase();
-                // Solo autocompletar si no hay valor guardado
-                const curPair = loadPairCode();
-                const curProj = loadProjectCode();
-                if (/^[A-Z][0-9]{3}[A-Z]$/.test(pair) && !curPair) {
-                    savePairCode(pair);
-                    const pe = document.getElementById('pairing-code'); if (pe && !pe.value) pe.value = pair;
-                    const ci = document.getElementById('connection-input'); if (ci && !ci.value) ci.value = pair;
-                    if (p2p) p2p.expectedPairCode = pair;
-                }
-                if (/^[A-Z][0-9]{3}[A-Z]$/.test(proj) && !curProj) {
-                    saveProjectCode(proj);
-                    const ppe = document.getElementById('project-code'); if (ppe && !ppe.value) ppe.value = proj;
-                    const pi = document.getElementById('project-input'); if (pi && !pi.value) pi.value = proj;
-                    if (p2p) p2p.expectedProjectCode = proj;
-                }
-                // Solo cambiar rol si no está seleccionado
-                const rs = document.getElementById('role-select');
-                if ((role === 'node' || role === 'principal' || role === 'primary') && rs && !rs.value) {
-                    rs.value = (role === 'primary') ? 'primary' : role;
-                }
-            } catch {}
-        })();
-        applyRoleUI();
+    applyRoleUI();
     initDownloadQR();
     function updateZoneMotionVisibility() {
         const wrap = document.getElementById('zone-motion-wrapper');
@@ -2718,16 +2380,15 @@ setTimeout(renderChatHistory, 100);
             } catch (e) { console.error(e); }
         }
 
-    function initDownloadQR() {
-        // Prefill con URL que incluye códigos para facilitar el uso en otros dispositivos
-        if (downloadUrlInput) downloadUrlInput.value = buildShareUrl();
+        function initDownloadQR() {
+            if (downloadUrlInput) downloadUrlInput.value = location.href;
             if (downloadUrlHint) {
                 if (location.protocol === 'file:') {
                     downloadUrlHint.textContent = 'Estás abriendo este archivo localmente (file://). Para que otros lo descarguen, súbelo a un hosting (p. ej., GitHub Pages) o expón un servidor accesible en tu red y pega aquí la URL pública.';
                 } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
                     downloadUrlHint.textContent = 'Este enlace funciona en tu red local. Asegúrate de que el dispositivo que escanee el QR esté en la misma red.';
                 } else {
-            downloadUrlHint.textContent = 'Comparte este enlace público; incluye el código del Principal y el del Proyecto para autocompletar.';
+                    downloadUrlHint.textContent = 'Comparte este enlace público; al escanear el QR se descargará/abrirá la página.';
                 }
             }
             generateDownloadQR();
