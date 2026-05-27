@@ -595,7 +595,7 @@ async function loadRecentDetail(proj) {
     const tbody = document.getElementById('recentBody');
     if (!visits || !visits.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:1rem;">Sin visitas</td></tr>'; return; }
     tbody.innerHTML = visits.map(v => {
-      const d = new Date(v.created_at + 'Z');
+      const d = new Date(v.created_at);
       return `<tr><td>${escT(v.country)}</td><td>${escT(v.city)}</td><td>${escT(v.browser)}</td><td>${escT(v.os)}</td><td>${escT(v.device)}</td><td style="color:var(--muted);font-size:0.7rem;">${d.toLocaleString('es-PY')}</td></tr>`;
     }).join('');
   } catch (e) { /* */ }
