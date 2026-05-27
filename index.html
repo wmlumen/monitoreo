@@ -138,9 +138,18 @@
       <div class="stat-card"><div class="val" id="totalUnique">—</div><div class="lbl">Únicos hoy</div></div>
       <div class="stat-card"><div class="val" id="totalToday">—</div><div class="lbl">Visitas hoy</div></div>
       <div class="stat-card"><div class="val" id="avgTime">—</div><div class="lbl">Promedio (seg)</div></div>
+      <div class="stat-card"><div class="val" id="bestDay">—</div><div class="lbl">Día récord</div></div>
     </div>
 
     <!-- Mapa de visitas -->
+    <div class="filter-bar" style="margin-bottom:0.5rem;">
+      <label style="color:var(--muted); font-size:0.8rem; display:flex; align-items:center; gap:0.4rem;">
+        📍 Mapa:
+        <select id="mapFilter" onchange="filterMap()" style="padding:0.35rem 0.6rem; background:var(--card); border:1px solid var(--border); border-radius:0.4rem; color:var(--text); font-size:0.8rem; outline:none;">
+          <option value="all">Todos los proyectos</option>
+        </select>
+      </label>
+    </div>
     <div id="map"></div>
 
     <!-- Filtro -->
@@ -180,9 +189,11 @@ const projects = [
 
 const VISITAS_API = 'https://api-visitas-ei0d.onrender.com';
 
-// ─── Mapa (inicializar dentro de DOMContentLoaded) ───────
+// ─── Mapa ────────────────────────────────────────────────
 let visitMap = null;
 let markersLayer = null;
+let allLocations = []; // { lat, lon, city, country, count, project }
+const PROJ_COLORS = ['#38bdf8','#f472b6','#a78bfa','#34d399','#fb923c','#facc15','#60a5fa','#e879f9'];
 
 function initMap() {
   visitMap = L.map('map').setView([-23.4425, -58.4438], 6);
@@ -195,9 +206,10 @@ function initMap() {
 }
 
 async function loadMapVisits() {
-  // Obtener ubicaciones de todos los proyectos trackeados
   const tracked = projects.filter(p => p.tracked);
-  const cityAgg = {}; // key: "lat,lon" -> { lat, lon, city, country, count, projects: Set }
+  allLocations = [];
+  const sel = document.getElementById('mapFilter');
+  sel.innerHTML = '<option value="all">Todos los proyectos</option>';
 
   for (const p of tracked) {
     try {
@@ -206,37 +218,54 @@ async function loadMapVisits() {
       const cities = data.cities || [];
       cities.forEach(c => {
         if (c.lat == null || c.lon == null) return;
-        const key = `${c.lat.toFixed(4)},${c.lon.toFixed(4)}`;
-        if (!cityAgg[key]) {
-          cityAgg[key] = { lat: c.lat, lon: c.lon, city: c.city, country: c.country, count: 0, projects: new Set() };
-        }
-        cityAgg[key].count += c.count;
-        cityAgg[key].projects.add(p.id);
+        allLocations.push({ lat: c.lat, lon: c.lon, city: c.city, country: c.country, count: c.count, project: p.id });
       });
+      if (cities.length > 0) {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.id;
+        sel.appendChild(opt);
+      }
     } catch (e) { /* skip */ }
   }
 
-  const locations = Object.values(cityAgg);
-  if (locations.length === 0) {
-    L.marker([-25.2867, -57.6470])
-      .addTo(markersLayer)
-      .bindPopup('<b>📍 Paraguay</b><br>Esperando datos...');
+  renderMap(allLocations);
+}
+
+function renderMap(locations) {
+  markersLayer.clearLayers();
+  if (!locations.length) {
+    L.marker([-25.2867, -57.6470]).addTo(markersLayer).bindPopup('<b>📍 Paraguay</b><br>Esperando datos...');
     return;
   }
 
-  const maxCount = Math.max(...locations.map(l => l.count));
-  const bounds = [];
-
+  // Agrupar por lat/lon sumando counts
+  const agg = {};
   locations.forEach(loc => {
-    // Radio proporcional: mínimo 6px, máximo 35px
+    const key = `${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
+    if (!agg[key]) agg[key] = { lat: loc.lat, lon: loc.lon, city: loc.city, country: loc.country, count: 0, projects: new Set() };
+    agg[key].count += loc.count;
+    agg[key].projects.add(loc.project);
+  });
+
+  const grouped = Object.values(agg);
+  const maxCount = Math.max(...grouped.map(l => l.count));
+  const bounds = [];
+  const projArr = [...new Set(locations.map(l => l.project))];
+  const colorMap = {};
+  projArr.forEach((p, i) => { colorMap[p] = PROJ_COLORS[i % PROJ_COLORS.length]; });
+
+  grouped.forEach(loc => {
     const radius = 6 + (loc.count / maxCount) * 29;
+    const mainProj = [...loc.projects][0];
+    const fillColor = projArr.length === 1 ? colorMap[mainProj] : colorMap[mainProj];
     const marker = L.circleMarker([loc.lat, loc.lon], {
       radius,
-      fillColor: '#38bdf8',
+      fillColor,
       color: '#0f172a',
       weight: 2,
       opacity: 1,
-      fillOpacity: 0.7
+      fillOpacity: 0.75
     });
     const projList = [...loc.projects].join(', ');
     marker.bindPopup(`<b>📍 ${loc.city || '—'}, ${loc.country || '—'}</b><br>👁 ${loc.count} visitas<br><small>${projList}</small>`);
@@ -249,6 +278,15 @@ async function loadMapVisits() {
   }
 }
 
+function filterMap() {
+  const val = document.getElementById('mapFilter').value;
+  if (val === 'all') {
+    renderMap(allLocations);
+  } else {
+    renderMap(allLocations.filter(l => l.project === val));
+  }
+}
+
 // ─── Carga inicial ───────────────────────────────────────
 const pageStart = Date.now();
 
@@ -256,9 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   loadStats();
   renderProjects(projects);
-  clock();
-  setInterval(clock, 1000);
+  loadBestDay();
   loadTimeStats();
+  updateClock();
+  setInterval(updateClock, 1000);
 });
 
 // ─── Permanencia: enviar tiempo al salir ────────────────
@@ -274,8 +313,11 @@ window.addEventListener('beforeunload', () => {
   }
 });
 
-function clock() {
-  document.getElementById('footerTime').textContent = new Date().toLocaleString('es-PY');
+function updateClock() {
+  const el = document.getElementById('footerTime');
+  if (el) {
+    try { el.textContent = new Date().toLocaleString('es-PY'); } catch (e) { el.textContent = new Date().toLocaleString(); }
+  }
 }
 
 // ─── Cargar estadísticas globales ────────────────────────
@@ -383,6 +425,34 @@ async function loadTimeStats() {
       ? `${Math.round(data.avg_seconds / 60)}m`
       : `${data.avg_seconds}s`;
   } catch (e) { /* sin datos */ }
+}
+
+// ─── Día con más tráfico ─────────────────────────────────
+async function loadBestDay() {
+  try {
+    const tracked = projects.filter(p => p.tracked);
+    const dayTotal = {};
+    for (const p of tracked) {
+      try {
+        const res = await fetch(`${VISITAS_API}/api/stats/timeline?project=${p.id}&days=365`);
+        const data = await res.json();
+        const timeline = data.timeline || [];
+        timeline.forEach(d => {
+          dayTotal[d.date] = (dayTotal[d.date] || 0) + d.count;
+        });
+      } catch (e) { /* skip */ }
+    }
+    const entries = Object.entries(dayTotal);
+    if (!entries.length) return;
+    entries.sort((a, b) => b[1] - a[1]);
+    const [bestDate, bestCount] = entries[0];
+    const el = document.getElementById('bestDay');
+    if (el) {
+      const [y, m, d] = bestDate.split('-');
+      el.textContent = `${d}/${m}`;
+      el.title = `${bestDate}: ${bestCount} visitas`;
+    }
+  } catch (e) { /* silencioso */ }
 }
 
 // ─── Filtro ──────────────────────────────────────────────
