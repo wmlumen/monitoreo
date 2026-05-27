@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -115,12 +117,34 @@
     .tag-web { background: rgba(34,197,94,.2); color: var(--green); }
     .tag-html { background: rgba(245,158,11,.2); color: var(--yellow); }
 
+    .analytics { margin-top: 2rem; }
+    .analytics h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--accent); }
+    .analytics .sel-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .analytics .sel-row select {
+      padding: 0.45rem 0.75rem; background: var(--card); border: 1px solid var(--border);
+      border-radius: 0.4rem; color: var(--text); font-size: 0.85rem; outline: none;
+    }
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+    .chart-box h3 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .chart-box canvas { max-height: 200px; }
+    .recent-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    .recent-table th { text-align: left; color: var(--muted); padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+    .recent-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border); color: var(--text); }
+    .top-pages-box { background: var(--card); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1rem; }
+    .page-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; font-size: 0.75rem; }
+    .page-row .pg { flex: 1; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .page-row .pg-count { color: var(--muted); min-width: 2.5rem; text-align: right; }
+    .page-row .pg-bar { flex: 2; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .page-row .pg-bar div { height: 100%; background: var(--accent); border-radius: 2px; }
+
     @media (max-width: 600px) {
       .header { padding: 1.2rem; }
       .header h1 { font-size: 1.3rem; }
       .project-grid { grid-template-columns: 1fr; }
       .container { padding: 0.8rem; }
       #map { height: 260px; }
+      .charts-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -160,6 +184,39 @@
     <!-- Grid -->
     <div class="project-grid" id="projectGrid">
       <div class="no-results">Cargando proyectos...</div>
+    </div>
+
+    <!-- Analíticas detalladas -->
+    <div class="analytics">
+      <div class="sel-row">
+        <h2 style="margin:0;">📈 Analíticas</h2>
+        <select id="analyticProject" onchange="loadAnalytics()" style="margin-left:auto;">
+          <option value="">Seleccionar proyecto...</option>
+        </select>
+      </div>
+      <div class="charts-row" id="chartsRow" style="display:none;">
+        <div class="chart-box">
+          <h3>📅 Visitas por día (30 días)</h3>
+          <canvas id="timelineChart"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>💻 Navegadores</h3>
+          <canvas id="browserChart"></canvas>
+        </div>
+      </div>
+      <div id="analyticsDetail" style="display:none;">
+        <div class="top-pages-box" style="margin-bottom:1rem;">
+          <h3 style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">📄 Top Páginas</h3>
+          <div id="topPagesList"></div>
+        </div>
+        <div class="chart-box">
+          <h3>🕐 Últimas visitas</h3>
+          <table class="recent-table" id="recentTable">
+            <thead><tr><th>País</th><th>Ciudad</th><th>Navegador</th><th>SO</th><th>Dispositivo</th><th>Fecha</th></tr></thead>
+            <tbody id="recentBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -294,6 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap();
   loadStats();
   renderProjects(projects);
+  initAnalytics();
   loadBestDay();
   loadTimeStats();
   updateClock();
@@ -455,7 +513,115 @@ async function loadBestDay() {
   } catch (e) { /* silencioso */ }
 }
 
-// ─── Filtro ──────────────────────────────────────────────
+// ─── Analíticas detalladas ──────────────────────────────
+let tlChart = null, brChart = null;
+
+function initAnalytics() {
+  const sel = document.getElementById('analyticProject');
+  const tracked = projects.filter(p => p.tracked);
+  tracked.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.id;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadAnalytics() {
+  const proj = document.getElementById('analyticProject').value;
+  if (!proj) { document.getElementById('chartsRow').style.display = 'none'; document.getElementById('analyticsDetail').style.display = 'none'; return; }
+  document.getElementById('chartsRow').style.display = '';
+  document.getElementById('analyticsDetail').style.display = '';
+  loadTimeline(proj);
+  loadBrowsers(proj);
+  loadRecentDetail(proj);
+  loadTopPagesDetail(proj);
+}
+
+async function loadTimeline(proj) {
+  try {
+    const res = await fetch(`${VISITAS_API}/api/stats/timeline?project=${encodeURIComponent(proj)}&days=30`);
+    const data = await res.json();
+    const tl = data.timeline || [];
+    const labels = tl.map(d => { const p = d.date.split('-'); return `${p[2]}/${p[1]}`; });
+    const visits = tl.map(d => d.count);
+    const unique = tl.map(d => d.unique_count);
+    const ctx = document.getElementById('timelineChart').getContext('2d');
+    if (tlChart) tlChart.destroy();
+    tlChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Visitas', data: visits, borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', fill: true, tension: 0.3, pointRadius: 1 },
+          { label: 'Únicos', data: unique, borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.1)', fill: true, tension: 0.3, pointRadius: 1 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 10, padding: 10 } } },
+        scales: {
+          x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: '#1e293b' } },
+          y: { beginAtZero: true, ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+        }
+      }
+    });
+  } catch (e) { /* */ }
+}
+
+async function loadBrowsers(proj) {
+  try {
+    const res = await fetch(`${VISITAS_API}/api/stats/devices?project=${encodeURIComponent(proj)}`);
+    const data = await res.json();
+    const browsers = data.browsers || [];
+    const colors = ['#38bdf8','#f59e0b','#22c55e','#ef4444','#a78bfa','#ec4899','#14b8a6','#64748b'];
+    const ctx = document.getElementById('browserChart').getContext('2d');
+    if (brChart) brChart.destroy();
+    brChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels: browsers.map(b => b.browser), datasets: [{ data: browsers.map(b => b.count), backgroundColor: colors.slice(0, browsers.length), borderWidth: 0 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 10, padding: 8 } } }
+      }
+    });
+  } catch (e) { /* */ }
+}
+
+async function loadRecentDetail(proj) {
+  try {
+    const res = await fetch(`${VISITAS_API}/api/stats/recent?project=${encodeURIComponent(proj)}&limit=15`);
+    const visits = await res.json();
+    const tbody = document.getElementById('recentBody');
+    if (!visits || !visits.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:1rem;">Sin visitas</td></tr>'; return; }
+    tbody.innerHTML = visits.map(v => {
+      const d = new Date(v.created_at + 'Z');
+      return `<tr><td>${escT(v.country)}</td><td>${escT(v.city)}</td><td>${escT(v.browser)}</td><td>${escT(v.os)}</td><td>${escT(v.device)}</td><td style="color:var(--muted);font-size:0.7rem;">${d.toLocaleString('es-PY')}</td></tr>`;
+    }).join('');
+  } catch (e) { /* */ }
+}
+
+async function loadTopPagesDetail(proj) {
+  try {
+    const res = await fetch(`${VISITAS_API}/api/stats/overview?project=${encodeURIComponent(proj)}`);
+    const data = await res.json();
+    const pages = data.top_pages || [];
+    const container = document.getElementById('topPagesList');
+    if (!pages.length) { container.innerHTML = '<div style="color:var(--muted);text-align:center;padding:1rem;">Sin datos</div>'; return; }
+    const max = pages[0].count;
+    container.innerHTML = pages.map(p => {
+      const pct = Math.round((p.count / max) * 100);
+      return `<div class="page-row"><span class="pg">${escT(p.page)}</span><span class="pg-count">${p.count}</span><span class="pg-bar"><div style="width:${pct}%"></div></span></div>`;
+    }).join('');
+  } catch (e) { /* */ }
+}
+
+function escT(str) {
+  if (!str) return '—';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 function filterProjects() {
   const q = document.getElementById('searchInput').value.toLowerCase();
   const filtered = projects.filter(p =>
