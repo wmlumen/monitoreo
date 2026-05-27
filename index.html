@@ -226,25 +226,26 @@
   </div>
 
 <script>
-// ─── Datos de proyectos ───────────────────────────────────
-const projects = [
-  { id: "Calificaciones.py", desc: "Escala de calificaciones MEC Paraguay — sitio estático", gh: "wmlumen/Calificaciones.py", live: "https://calificaciones-py.vercel.app", type: "html", tracked: true },
-  { id: "API-Visitas", desc: "API de tracking de visitas con geolocalización y mapa", gh: "wmlumen/API-Visitas", live: "https://api-visitas-ei0d.onrender.com", type: "api", tracked: false },
-  { id: "api-calificaciones", desc: "API REST para escalas de calificaciones (MEC Paraguay)", gh: "wmlumen/api-calificaciones", live: null, type: "api", tracked: true },
-  { id: "api-escuelas-py", desc: "API REST para datos de establecimientos educativos de Paraguay", gh: "wmlumen/api-escuelas-py", live: null, type: "api", tracked: false },
-  { id: "C-Sociologia", desc: "Evaluación de Sociología", gh: "wmlumen/C-Sociologia", live: null, type: "html", tracked: false },
-  { id: "concurso", desc: "Sistema de concursos y llamados", gh: "wmlumen/concurso", live: null, type: "html", tracked: false },
-  { id: "Api-BD", desc: "API base de datos", gh: "wmlumen/Api-BD", live: null, type: "html", tracked: false },
-  { id: "monitoreo", desc: "Sistema de monitoreo ⭐", gh: "wmlumen/monitoreo", live: null, type: "html", tracked: false },
-  { id: "GLSMRNP", desc: "Página Masónica", gh: "wmlumen/GLSMRNP", live: null, type: "html", tracked: false },
-  { id: "VARK", desc: "Estilos de aprendizaje", gh: "wmlumen/VARK", live: null, type: "html", tracked: false },
-  { id: "Ambiental", desc: "Scripts ambientales", gh: "wmlumen/Ambiental", live: null, type: "other", tracked: false },
-  { id: "tienda", desc: "Tienda virtual", gh: "wmlumen/tienda", live: null, type: "html", tracked: false },
-  { id: "mariachifarra", desc: "Página web Mariachi Farra", gh: "wmlumen/mariachifarra", live: null, type: "html", tracked: false },
-  { id: "Academico", desc: "Sistema académico", gh: "wmlumen/Academico", live: null, type: "html", tracked: false },
-];
+// ─── Metadata de proyectos (desc, gh, live, type) ─────────
+const projectMeta = {
+  "Calificaciones.py": { desc: "Escala de calificaciones MEC Paraguay — sitio estático", gh: "wmlumen/Calificaciones.py", live: "https://calificaciones-py.vercel.app", type: "html" },
+  "API-Visitas": { desc: "API de tracking de visitas con geolocalización y mapa", gh: "wmlumen/API-Visitas", live: "https://api-visitas-ei0d.onrender.com", type: "api" },
+  "api-calificaciones": { desc: "API REST para escalas de calificaciones (MEC Paraguay)", gh: "wmlumen/api-calificaciones", live: null, type: "api" },
+  "api-escuelas-py": { desc: "API REST para datos de establecimientos educativos de Paraguay", gh: "wmlumen/api-escuelas-py", live: null, type: "api" },
+  "C-Sociologia": { desc: "Evaluación de Sociología", gh: "wmlumen/C-Sociologia", live: null, type: "html" },
+  "concurso": { desc: "Sistema de concursos y llamados", gh: "wmlumen/concurso", live: null, type: "html" },
+  "Api-BD": { desc: "API base de datos", gh: "wmlumen/Api-BD", live: null, type: "html" },
+  "monitoreo": { desc: "Sistema de monitoreo ⭐", gh: "wmlumen/monitoreo", live: null, type: "html" },
+  "GLSMRNP": { desc: "Página Masónica", gh: "wmlumen/GLSMRNP", live: null, type: "html" },
+  "VARK": { desc: "Estilos de aprendizaje", gh: "wmlumen/VARK", live: null, type: "html" },
+  "Ambiental": { desc: "Scripts ambientales", gh: "wmlumen/Ambiental", live: null, type: "other" },
+  "tienda": { desc: "Tienda virtual", gh: "wmlumen/tienda", live: null, type: "html" },
+  "mariachifarra": { desc: "Página web Mariachi Farra", gh: "wmlumen/mariachifarra", live: null, type: "html" },
+  "Academico": { desc: "Sistema académico", gh: "wmlumen/Academico", live: null, type: "html" },
+};
 
 const VISITAS_API = 'https://api-visitas-ei0d.onrender.com';
+let allProjects = [];
 
 // ─── Mapa ────────────────────────────────────────────────
 let visitMap = null;
@@ -263,24 +264,24 @@ function initMap() {
 }
 
 async function loadMapVisits() {
-  const tracked = projects.filter(p => p.tracked);
+  const tracked = allProjects.filter(p => p.real_visits > 0);
   allLocations = [];
   const sel = document.getElementById('mapFilter');
   sel.innerHTML = '<option value="all">Todos los proyectos</option>';
 
   for (const p of tracked) {
     try {
-      const res = await fetch(`${VISITAS_API}/api/stats/locations?project=${p.id}`);
+      const res = await fetch(`${VISITAS_API}/api/stats/locations?project=${encodeURIComponent(p.name)}`);
       const data = await res.json();
       const cities = data.cities || [];
       cities.forEach(c => {
         if (c.lat == null || c.lon == null) return;
-        allLocations.push({ lat: c.lat, lon: c.lon, city: c.city, country: c.country, count: c.count, project: p.id });
+        allLocations.push({ lat: c.lat, lon: c.lon, city: c.city, country: c.country, count: c.count, project: p.name });
       });
       if (cities.length > 0) {
         const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.id;
+        opt.value = p.name;
+        opt.textContent = p.name;
         sel.appendChild(opt);
       }
     } catch (e) { /* skip */ }
@@ -348,12 +349,7 @@ function filterMap() {
 const pageStart = Date.now();
 
 document.addEventListener('DOMContentLoaded', () => {
-  initMap();
-  loadStats();
-  renderProjects(projects);
-  initAnalytics();
-  loadBestDay();
-  loadTimeStats();
+  loadProjects();
   updateClock();
   setInterval(updateClock, 1000);
 });
@@ -378,18 +374,43 @@ function updateClock() {
   }
 }
 
-// ─── Cargar estadísticas globales ────────────────────────
-async function loadStats() {
+// ─── Cargar proyectos desde la API ───────────────────────
+async function loadProjects() {
   try {
     const res = await fetch(`${VISITAS_API}/api/projects`);
     const data = await res.json();
-    const trackedProjects = data.filter(p => p.name !== 'default' && p.name !== 'test_final' && p.name !== 'test_local');
+    allProjects = data
+      .filter(p => p.name !== 'default' && p.name !== 'test_final' && p.name !== 'test_local')
+      .map(p => {
+        const meta = projectMeta[p.name] || { desc: 'Proyecto sin metadata', gh: `wmlumen/${p.name}`, live: null, type: 'other' };
+        return {
+          id: p.name,
+          name: p.name,
+          desc: meta.desc,
+          gh: meta.gh,
+          live: meta.live,
+          type: meta.type,
+          total: p.total_visits || 0,
+          real: p.real_visits || 0,
+          unique: p.unique_visitors || 0,
+          today: p.today_visits || 0,
+          last_visit: p.last_visit
+        };
+      })
+      .sort((a, b) => b.real - a.real);
 
-    document.getElementById('totalProjects').textContent = trackedProjects.length;
-    document.getElementById('totalVisits').textContent = trackedProjects.reduce((s, p) => s + (p.real_visits || 0), 0);
-    document.getElementById('totalToday').textContent = trackedProjects.reduce((s, p) => s + (p.today_visits || 0), 0);
-    document.getElementById('totalUnique').textContent = trackedProjects.reduce((s, p) => s + (p.unique_visitors || 0), 0);
-  } catch (e) { /* silencioso */ }
+    // Stats globales
+    document.getElementById('totalProjects').textContent = allProjects.length;
+    document.getElementById('totalVisits').textContent = allProjects.reduce((s, p) => s + p.real, 0);
+    document.getElementById('totalToday').textContent = allProjects.reduce((s, p) => s + p.today, 0);
+    document.getElementById('totalUnique').textContent = allProjects.reduce((s, p) => s + p.unique, 0);
+  } catch (e) { /* */ }
+
+  renderProjects(allProjects);
+  initMap();
+  initAnalytics();
+  loadBestDay();
+  loadTimeStats();
 }
 
 // ─── Renderizar proyectos ────────────────────────────────
@@ -402,44 +423,29 @@ function renderProjects(list) {
   grid.innerHTML = list.map(p => `
     <div class="project-card" data-name="${p.id.toLowerCase()}">
       <div class="name">
-        <span class="dot ${p.tracked ? 'dot-active' : 'dot-none'}" title="${p.tracked ? 'Trackeado' : 'Sin tracking'}"></span>
+        <span class="dot ${p.real > 0 ? 'dot-active' : (p.today > 0 ? 'dot-active' : 'dot-none')}" title="${p.real > 0 ? 'Con visitas' : 'Sin tracking'}"></span>
         <a href="https://github.com/${p.gh}" target="_blank">${p.id}</a>
         ${p.type === 'api' ? '<span class="tag tag-api">API</span>' : ''}
         ${p.type === 'html' ? '<span class="tag tag-web">Web</span>' : ''}
       </div>
       <div class="desc">${p.desc}</div>
       <div class="meta">
-        <span id="visits-${p.id}">📊 — visitas</span>
-        <span id="unique-${p.id}">👤 — únicos</span>
-        <span id="today-${p.id}">📅 — hoy</span>
+        <span>📊 <strong>${p.real}</strong> visitas</span>
+        <span>👤 <strong>${p.unique}</strong> únicos</span>
+        <span>📅 <strong>${p.today}</strong> hoy</span>
         <span id="shares-${p.id}">🔗 — compartidos</span>
       </div>
       <div class="actions">
         <a href="https://github.com/${p.gh}" target="_blank" class="btn btn-gh">⬡ GitHub</a>
         ${p.live ? `<a href="${p.live}" target="_blank" class="btn btn-live">↗ Visitar</a>` : ''}
-        <button class="btn-share btn-share-wa" onclick="shareProject('${p.id}','${p.desc}','https://github.com/${p.gh}','whatsapp')" title="Compartir en WhatsApp">📱</button>
-        <button class="btn-share btn-share-tw" onclick="shareProject('${p.id}','${p.desc}','https://github.com/${p.gh}','twitter')" title="Compartir en X/Twitter">𝕏</button>
-        <button class="btn-share btn-share-fb" onclick="shareProject('${p.id}','${p.desc}','https://github.com/${p.gh}','facebook')" title="Compartir en Facebook">f</button>
+        <button class="btn-share btn-share-wa" onclick="shareProject('${p.id}','${p.desc.replace(/'/g,"\\'")}','https://github.com/${p.gh}','whatsapp')" title="Compartir en WhatsApp">📱</button>
+        <button class="btn-share btn-share-tw" onclick="shareProject('${p.id}','${p.desc.replace(/'/g,"\\'")}','https://github.com/${p.gh}','twitter')" title="Compartir en X/Twitter">𝕏</button>
+        <button class="btn-share btn-share-fb" onclick="shareProject('${p.id}','${p.desc.replace(/'/g,"\\'")}','https://github.com/${p.gh}','facebook')" title="Compartir en Facebook">f</button>
       </div>
     </div>
   `).join('');
 
-  // Cargar stats individuales
-  list.forEach(p => { loadProjectStats(p.id); loadShareStats(p.id); });
-}
-
-// ─── Stats por proyecto ──────────────────────────────────
-async function loadProjectStats(projectName) {
-  try {
-    const res = await fetch(`${VISITAS_API}/api/stats/overview?project=${projectName}`);
-    const data = await res.json();
-    const vEl = document.getElementById(`visits-${projectName}`);
-    const uEl = document.getElementById(`unique-${projectName}`);
-    const tEl = document.getElementById(`today-${projectName}`);
-    if (vEl) vEl.innerHTML = `📊 <strong>${data.total || 0}</strong> visitas`;
-    if (uEl) uEl.innerHTML = `👤 <strong>${data.unique_visitors || 0}</strong> únicos`;
-    if (tEl) tEl.innerHTML = `📅 <strong>${data.today || 0}</strong> hoy`;
-  } catch (e) { /* sin datos */ }
+  list.forEach(p => loadShareStats(p.id));
 }
 
 async function loadShareStats(projectName) {
@@ -488,11 +494,10 @@ async function loadTimeStats() {
 // ─── Día con más tráfico ─────────────────────────────────
 async function loadBestDay() {
   try {
-    const tracked = projects.filter(p => p.tracked);
     const dayTotal = {};
-    for (const p of tracked) {
+    for (const p of allProjects) {
       try {
-        const res = await fetch(`${VISITAS_API}/api/stats/timeline?project=${p.id}&days=365`);
+        const res = await fetch(`${VISITAS_API}/api/stats/timeline?project=${encodeURIComponent(p.name)}&days=365`);
         const data = await res.json();
         const timeline = data.timeline || [];
         timeline.forEach(d => {
@@ -518,11 +523,10 @@ let tlChart = null, brChart = null;
 
 function initAnalytics() {
   const sel = document.getElementById('analyticProject');
-  const tracked = projects.filter(p => p.tracked);
-  tracked.forEach(p => {
+  allProjects.forEach(p => {
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.id;
+    opt.value = p.name;
+    opt.textContent = p.name;
     sel.appendChild(opt);
   });
 }
@@ -624,7 +628,7 @@ function escT(str) {
 }
 function filterProjects() {
   const q = document.getElementById('searchInput').value.toLowerCase();
-  const filtered = projects.filter(p =>
+  const filtered = allProjects.filter(p =>
     p.id.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q)
   );
   renderProjects(filtered);
