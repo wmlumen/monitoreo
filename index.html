@@ -264,7 +264,7 @@ function initMap() {
 }
 
 async function loadMapVisits() {
-  const tracked = allProjects.filter(p => p.real_visits > 0);
+  const tracked = allProjects.filter(p => p.real > 0);
   allLocations = [];
   const sel = document.getElementById('mapFilter');
   sel.innerHTML = '<option value="all">Todos los proyectos</option>';
